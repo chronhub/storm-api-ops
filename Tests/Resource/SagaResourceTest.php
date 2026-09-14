@@ -90,6 +90,7 @@ final class SagaResourceTest extends TestCase
         $this->assertSame(5, $resource->retryTotal);
         $this->assertSame('2026-08-05T09:45:00.000000+00:00', $resource->waivedAt);
         $this->assertSame(['balance' => 42], $resource->exposed);
+        $this->assertSame('2026-08-05T09:40:00.000000+00:00', $resource->globalDeadlineConsumedAt);
     }
 
     #[Test]
@@ -117,6 +118,7 @@ final class SagaResourceTest extends TestCase
             definitionVersion: 3,
             retryTotal: 5,
             waivedAt: '2026-08-05T09:45:00.000000+00:00',
+            globalDeadlineConsumedAt: '2026-08-05T09:40:00.000000+00:00',
             retries: [],
             compensations: [new CompensationRecord('debit', CompensationStatus::cases()[0])],
             timers: [new TimerSnapshot(1, 'deadline', 'await', '2026-08-05T10:00:00.000000+00:00', null)],

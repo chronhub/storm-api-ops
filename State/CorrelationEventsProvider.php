@@ -21,15 +21,10 @@ use Storm\Contracts\Chronicler\UnknownEventType;
 use Storm\Contracts\Clock\ClockExceptionContract;
 use Storm\Contracts\Serializer\SerializationExceptionContract;
 
-use function array_filter;
-use function array_map;
-use function array_values;
 use function count;
-use function explode;
 use function implode;
 use function is_string;
 use function sprintf;
-use function trim;
 
 /**
  * Every stored event carrying one of the given correlation ids, the HTTP window over the same read
@@ -65,7 +60,8 @@ final readonly class CorrelationEventsProvider implements ProviderInterface
      * @return list<StoredEventResource>
      *
      * @throws AnonymousReadRefused when no actor is bound and the app did not opt out of the read gate
-     * @throws MalformedQueryParameter when `ids` is absent, blank, or holds nothing but separators
+     * @throws MalformedQueryParameter when `ids` is absent, blank, holds nothing but separators, or
+     *                                 names more ids than the predicate width admits
      * @throws InvalidPosition when a stored row's position is malformed
      * @throws ClockExceptionContract when a stored point in time failed to be parsed
      * @throws SerializationExceptionContract when a stored event failed to deserialize
@@ -102,21 +98,23 @@ final readonly class CorrelationEventsProvider implements ProviderInterface
      * @param  array<string, mixed>  $filters
      * @return non-empty-list<string>
      *
-     * @throws MalformedQueryParameter when the parameter names no usable id
+     * @throws MalformedQueryParameter when the parameter names no usable id, or more than the width admits
      */
     private function setFrom(array $filters): array
     {
-        $raw = $filters['ids'] ?? null;
-
-        $ids = explode(',', is_string($raw) ? $raw : '')
-                |> (static fn ($x) => array_map(trim(...), $x))
-                |> array_filter(...)
-                |> array_values(...);
+        $ids = CorrelationIdSet::parse($filters['ids'] ?? null);
 
         if ($ids === []) {
             // a narrowing parameter dropped WIDENS the request, and this one would widen to the
             // whole store: refusing is the only reading that cannot mislead
             throw MalformedQueryParameter::expectingANonEmptySet('ids');
+        }
+
+        if (CorrelationIdSet::isTooWide($ids)) {
+            // refused rather than cut, the one place this window parts with the screen: a JSON
+            // envelope carries no notice, so a silently narrowed set would be served as a complete
+            // trace and the caller could not tell
+            throw MalformedQueryParameter::expectingANarrowerSet('ids', CorrelationIdSet::MAX_IDS, count($ids));
         }
 
         return $ids;

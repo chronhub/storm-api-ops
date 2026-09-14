@@ -34,4 +34,14 @@ final class MalformedQueryParameter extends RuntimeException
             $parameter,
         ));
     }
+
+    public static function expectingANarrowerSet(string $parameter, int $cap, int $given): self
+    {
+        return new self(sprintf(
+            'The "%s" query parameter must name at most %d value(s); got %d. The predicate carries one bound term per value, and a set wider than one transaction can mint asks a question this window is not the shape for.',
+            $parameter,
+            $cap,
+            $given,
+        ));
+    }
 }

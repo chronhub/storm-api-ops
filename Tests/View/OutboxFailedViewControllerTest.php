@@ -7,6 +7,7 @@ namespace Storm\ApiOps\Tests\View;
 use Doctrine\DBAL\Connection;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
+use PHPUnit\Framework\Attributes\TestWith;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
 use Storm\ApiOps\Error\AnonymousReadRefused;
@@ -72,6 +73,40 @@ final class OutboxFailedViewControllerTest extends TestCase
         self::assertIsString($body);
         self::assertStringContainsString('app.one', $body);
         self::assertStringContainsString('boom', $body);
+    }
+
+    #[Test]
+    #[TestWith([10, 10])]
+    #[TestWith([0, 0])]
+    #[TestWith([99999, 300])]
+    #[TestWith([-1, 0])]
+    public function the_next_page_keeps_the_effective_refresh(int $requested, int $effective): void
+    {
+        $reads = [];
+        $connection = $this->createStub(Connection::class);
+        $connection->method('fetchAllAssociative')->willReturnCallback(static function (string $sql, array $params) use (&$reads): array {
+            $reads[] = $params;
+
+            return $params['after'] === 0
+                ? [['id' => '7', 'position' => '700', 'type' => 'app.one', 'attempts' => '3', 'last_error' => 'boom', 'failed_at' => null]]
+                : [];
+        });
+        $controller = $this->controller($connection);
+        $first = (string) $controller(Request::create('/_storm/view/outbox-failed?limit=1&refresh='.$requested))->getContent();
+        self::assertSame(1, preg_match('/href="([^" ]+)">next<\/a>/', $first, $matches));
+        $next = html_entity_decode($matches[1] ?? '');
+        $second = (string) $controller(Request::create('/_storm/view/outbox-failed'.$next))->getContent();
+        self::assertSame([['after' => 0, 'limit' => 1], ['after' => 7, 'limit' => 1]], $reads);
+        self::assertStringContainsString('past this cursor', $second);
+        parse_str((string) parse_url($next, PHP_URL_QUERY), $query);
+        self::assertSame($effective, (int) ($query['refresh'] ?? 0));
+        if ($effective > 0) {
+            self::assertStringContainsString((string) ($effective * 1000), $second);
+            self::assertStringContainsString('name="refresh" value="'.$effective.'"', $second);
+        } else {
+            self::assertStringNotContainsString('setTimeout', $second);
+            self::assertStringContainsString('name="refresh" value=""', $second);
+        }
     }
 
     private function body(string $query): string

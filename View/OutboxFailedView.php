@@ -44,7 +44,7 @@ final readonly class OutboxFailedView
                     ? 'No dead-lettered row past this cursor. The window is exhausted, which is the end of the list and not an empty one.'
                     : 'The outbox dead-letter is empty: no event has been given up on. A row lands here only after its delivery attempts are spent.',
             )
-            : $this->table($rows, $limit);
+            : $this->table($rows, $limit, $refreshSeconds);
 
         return $this->page->render('dead-letters', $body, $refreshSeconds);
     }
@@ -52,7 +52,7 @@ final readonly class OutboxFailedView
     /**
      * @param  list<OutboxFailedResource>  $rows
      */
-    private function table(array $rows, int $limit): string
+    private function table(array $rows, int $limit, int $refreshSeconds): string
     {
         $cells = implode('', array_map($this->row(...), $rows));
 
@@ -61,10 +61,11 @@ final readonly class OutboxFailedView
             // the cursor is the LAST id of the page, which is what makes the next window strictly
             // after it; a page that filled its window says nothing about what lies past it
             : sprintf(
-                '<p class="sum">%d row(s), the window is FULL: there may be more past this page. <a href="?after=%d&amp;limit=%d">next</a></p>',
+                '<p class="sum">%d row(s), the window is FULL: there may be more past this page. <a href="?after=%d&amp;limit=%d&amp;refresh=%d">next</a></p>',
                 count($rows),
                 $rows[count($rows) - 1]->id,
                 $limit,
+                $refreshSeconds,
             );
 
         return $summary

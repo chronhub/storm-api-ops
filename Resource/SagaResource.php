@@ -184,6 +184,7 @@ final readonly class SagaResource
          * @var array<string, mixed>
          */
         public array $exposed = [],
+        public ?string $globalDeadlineConsumedAt = null,
     ) {}
 
     public static function fromSnapshot(SagaSnapshot $saga): self
@@ -212,6 +213,7 @@ final readonly class SagaResource
             stateVersion: $saga->stateVersion,
             retryTotal: $saga->retryTotal,
             waivedAt: $saga->waivedAt,
+            globalDeadlineConsumedAt: $saga->globalDeadlineConsumedAt,
             exposed: $saga->exposed,
         );
     }

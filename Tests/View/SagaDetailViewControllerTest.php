@@ -20,14 +20,41 @@ use Storm\ApiOps\View\SagaDetailView;
 use Storm\ApiOps\View\SagaDetailViewController;
 use Storm\Contracts\Chronicler\EventTypeMapper;
 use Storm\Projector\Registry\ProjectionRegistry;
+use Storm\Saga\Build\WorkflowBuilder;
+use Storm\Saga\Build\WorkflowIndex;
+use Storm\Saga\Build\WorkflowMetadata;
 use Storm\Saga\Build\WorkflowRegistry;
 use Storm\Saga\Store\Inspection\SagaInspectionGateway;
 use Storm\Symfony\Describe\StormDescriptor;
 use Storm\Telemetry\History\WorkflowHistoryStore;
+use Symfony\Component\DependencyInjection\ServiceLocator;
 use Symfony\Component\HttpFoundation\Request;
 
 final class SagaDetailViewControllerTest extends TestCase
 {
+    #[Test]
+    public function failing_lazy_workflow_declaration_keeps_the_instance_page(): void
+    {
+        $workflows = WorkflowRegistry::lazy(
+            new WorkflowIndex([new WorkflowMetadata('transfer', 1, null, 1, [])]),
+            new ServiceLocator(['transfer:1' => static function (): object {
+                throw new RuntimeException('workflow service cannot be built');
+            }]),
+            new WorkflowBuilder(new ServiceLocator([])),
+        );
+        $controller = $this->controllerOver($this->sagaConnection(true), $this->sagaConnection(false), workflows: $workflows);
+
+        $response = $controller(Request::create('/_storm/view/sagas?correlation=corr-9'));
+        $body = $response->getContent();
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertIsString($body);
+        self::assertStringContainsString('The declaration could not be read', $body);
+        self::assertStringContainsString('RuntimeException', $body);
+        self::assertStringContainsString('await_legs', $body);
+        self::assertStringNotContainsString('The history could not be read', $body);
+    }
+
     #[Test]
     #[Group('adversarial')]
     public function an_anonymous_caller_is_refused_even_with_no_correlation_named(): void
@@ -191,7 +218,7 @@ final class SagaDetailViewControllerTest extends TestCase
     {
         $rows = [[
             'workflow_type' => 'transfer', 'state_key' => 'await_legs', 'status' => 'running', 'version' => 3,
-            'started_at' => null, 'updated_at' => null, 'waived_at' => null, 'generation' => 1,
+            'started_at' => null, 'updated_at' => null, 'global_deadline_consumed_at' => null, 'waived_at' => null, 'generation' => 1,
             'definition_version' => 1, 'retry_total' => 0, 'retries' => null, 'compensations' => null,
             'parent_workflow_type' => null, 'parent_correlation_id' => null, 'root_correlation_id' => null,
             'state_version' => 1, 'vars' => null, 'retimes' => 0,
@@ -240,7 +267,7 @@ final class SagaDetailViewControllerTest extends TestCase
         return $this->controllerOver($connection, $historyThrows ? $this->throwingConnection() : $connection, $anonymous);
     }
 
-    private function controllerOver(Connection $connection, Connection $historyConnection, bool $anonymous = true): SagaDetailViewController
+    private function controllerOver(Connection $connection, Connection $historyConnection, bool $anonymous = true, ?WorkflowRegistry $workflows = null): SagaDetailViewController
     {
         $audit = new OpsAuditLog(new NullLogger);
         $gate = new OpsActorGate($audit, null, allowAnonymousReads: $anonymous);
@@ -253,7 +280,7 @@ final class SagaDetailViewControllerTest extends TestCase
             new DescribeProvider(new StormDescriptor(
                 new ProjectionRegistry,
                 $this->createStub(EventTypeMapper::class),
-                new WorkflowRegistry,
+                $workflows ?? new WorkflowRegistry,
                 [],
                 'test',
             )),

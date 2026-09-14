@@ -78,8 +78,14 @@ Beneath the firewall, the package carries its own defenses:
 - **every ops response leaves `no-store, private`**, whatever cache policy the app declared
   globally: raw payloads, snapshots and saga forensics never land in a shared cache.
 
-The payload-bearing reads — the event feed and the aggregate state — also write an audit line
-when served, so a drained store is never invisible in the module's own channel.
+The following served reads emit a best-effort audit record:
+
+- The stream event feed.
+- Correlation events in JSON and the HTML correlation trace.
+- The aggregate state.
+
+These records use the same audit channel as mutations. Emission does not guarantee delivery or
+retention; those properties belong to the application logging stack.
 
 Mutations are recorded in the audit log (`storm_api_ops mutation` records: action, subject,
 outcome, and the Bureau-resolved actor when the app aliases an `IdentityProvider`) — a

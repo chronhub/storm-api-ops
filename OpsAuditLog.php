@@ -9,16 +9,17 @@ use Storm\Bureau\IdentityProvider;
 use Throwable;
 
 /**
- * The mutation audit trail: one structured log record per destructive action, naming who acted,
- * the action, its subject, and how it ended. The actor is the Bureau-resolved `Actor` when the
- * app wires an `IdentityProvider`.
+ * The audit channel for served reads and mutation outcomes, including refused operations.
+ *
+ * Each record names the action and its subject, with the outcome and the Bureau-resolved `Actor`
+ * when the app wires an `IdentityProvider`.
  *
  * Delegated to the app's logging stack on purpose, the same doctrine as the alerts engine: the
  * framework emits the structured fact, routing and retention are ops concerns. A dedicated audit
  * table is not the default. Saga cancels additionally carry their operator reason INTO the event
  * store on `SagaCancelled`, the durable trail where one already exists.
  *
- * BEST-EFFORT BY CONTRACT, and therefore shielded: `record()` sits on the mutation path, in the
+ * BEST-EFFORT BY CONTRACT, and therefore shielded: `record()` sits on served read paths and in the
  * refusal branches, on the failure arm when an outage interrupts an accepted verb, and right after
  * the applied action, so a throwing logger or identity backend
  * must never replace the business outcome by masking a 404/409 or turning an applied reset into a

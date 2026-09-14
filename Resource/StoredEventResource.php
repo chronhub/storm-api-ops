@@ -10,6 +10,7 @@ use ApiPlatform\Metadata\QueryParameter;
 use Storm\ApiOps\Error\AnonymousReadRefused;
 use Storm\ApiOps\Error\MalformedQueryParameter;
 use Storm\ApiOps\State\CorrelationEventsProvider;
+use Storm\ApiOps\State\CorrelationIdSet;
 use Storm\ApiOps\State\PageWindow;
 use Storm\ApiOps\State\StreamEventsProvider;
 
@@ -66,7 +67,7 @@ use Storm\ApiOps\State\StreamEventsProvider;
             paginationEnabled: false,
             provider: CorrelationEventsProvider::class,
             parameters: [
-                'ids' => new QueryParameter(schema: ['type' => 'string'], description: 'One or more `__correlation_id`s, comma-separated; a lineage is resolved elsewhere and passed whole.'),
+                'ids' => new QueryParameter(schema: ['type' => 'string'], description: 'One to '.CorrelationIdSet::MAX_IDS.' `__correlation_id`s, comma-separated; a lineage is resolved elsewhere and passed whole. A wider set is refused rather than cut, this envelope carrying no way to report a narrowing.'),
                 'limit' => new QueryParameter(schema: ['type' => 'integer', 'minimum' => 1, 'maximum' => PageWindow::MAX_LIMIT], description: 'Page size, capped server-side.'),
             ],
         ),

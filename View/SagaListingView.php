@@ -117,6 +117,10 @@ final readonly class SagaListingView
             $flags[] = 'waived';
         }
 
+        if ($saga->globalDeadlineConsumedAt !== null) {
+            $flags[] = 'cap-consumed';
+        }
+
         if ($saga->parentCorrelationId !== null) {
             $flags[] = 'child';
         }
@@ -145,7 +149,7 @@ final readonly class SagaListingView
     {
         $value = fn (string $name): string => $this->page->text($filters[$name] ?? '');
         $refresh = $this->page->text($refreshSeconds > 0 ? (string) $refreshSeconds : '');
-        $waived = ($filters['waived'] ?? '') === '1' ? ' checked' : '';
+        $waived = (($filters['waived'] ?? '') === '1' || ($filters['waived'] ?? '') === 'true') ? ' checked' : '';
 
         return <<<HTML
             <form method="get">

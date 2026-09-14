@@ -61,6 +61,7 @@ final class SagaListingResourceTest extends TestCase
             startedAt: '2026-01-01T00:00:00+00:00',
             updatedAt: '2026-02-02T00:00:00+00:00',
             waivedAt: '2026-03-03T00:00:00+00:00',
+            globalDeadlineConsumedAt: '2026-02-03T00:00:00+00:00',
             parentCorrelationId: 'parent-1',
             pausedAt: '2026-04-04T00:00:00+00:00',
             typePaused: true,

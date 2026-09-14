@@ -36,6 +36,7 @@ final readonly class SagaListingResource
          * must SAY so, exactly like one held by its own stamp.
          */
         public bool $typePaused = false,
+        public ?string $globalDeadlineConsumedAt = null,
     ) {}
 
     /**
@@ -58,6 +59,7 @@ final readonly class SagaListingResource
             startedAt: $snapshot->startedAt,
             updatedAt: $snapshot->updatedAt,
             waivedAt: $snapshot->waivedAt,
+            globalDeadlineConsumedAt: $snapshot->globalDeadlineConsumedAt,
             parentCorrelationId: $snapshot->parentCorrelationId,
             pausedAt: $snapshot->pausedAt,
             typePaused: $snapshot->typePaused,

@@ -6,6 +6,7 @@ namespace Storm\ApiOps\Tests\View;
 
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
+use PHPUnit\Framework\Attributes\TestWith;
 use PHPUnit\Framework\TestCase;
 use Storm\ApiOps\Resource\SagaListingPageResource;
 use Storm\ApiOps\Resource\SagaListingResource;
@@ -15,6 +16,20 @@ use Storm\ApiOps\View\ViewPage;
 
 final class SagaListingViewTest extends TestCase
 {
+    #[Test]
+    #[TestWith([null, null, '—'])]
+    #[TestWith(['2026-09-09T12:00:00Z', null, 'cap-consumed'])]
+    #[TestWith([null, '2026-09-09T12:00:00Z', 'waived'])]
+    #[TestWith(['2026-09-09T12:00:00Z', '2026-09-09T12:01:00Z', 'waived, cap-consumed'])]
+    public function a_consumed_cap_is_distinct_from_a_waived_cap(?string $consumedAt, ?string $waivedAt, string $flags): void
+    {
+        $html = new SagaListingView()->render($this->page([
+            $this->saga(globalDeadlineConsumedAt: $consumedAt, waivedAt: $waivedAt),
+        ]), [], [], 0);
+
+        self::assertStringContainsString('<td class="t">'.$flags.'</td>', $html);
+    }
+
     #[Test]
     public function a_row_carries_the_scalars_an_operator_scans(): void
     {
@@ -271,6 +286,7 @@ final class SagaListingViewTest extends TestCase
         ?string $waivedAt = null,
         ?string $parentCorrelationId = null,
         ?string $updatedAt = '2026-08-23T10:00:00Z',
+        ?string $globalDeadlineConsumedAt = null,
     ): SagaListingResource {
         return new SagaListingResource(
             workflowType: $workflowType,
@@ -284,6 +300,7 @@ final class SagaListingViewTest extends TestCase
             startedAt: null,
             updatedAt: $updatedAt,
             waivedAt: $waivedAt,
+            globalDeadlineConsumedAt: $globalDeadlineConsumedAt,
             parentCorrelationId: $parentCorrelationId,
             pausedAt: $pausedAt,
             typePaused: $typePaused,

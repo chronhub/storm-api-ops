@@ -12,6 +12,19 @@ use Storm\ApiOps\View\SagaDeclaration;
 final class SagaDeclarationTest extends TestCase
 {
     #[Test]
+    public function malformed_spawn_collection_is_ignored(): void
+    {
+        $declaration = SagaDeclaration::forType([
+            'available' => true,
+            'definitions' => [['name' => 'transfer', 'spawns' => 'not a collection']],
+        ], 'transfer');
+
+        self::assertTrue($declaration->available);
+        self::assertSame([], $declaration->spawns);
+        self::assertSame([], $declaration->neverTaken([]));
+    }
+
+    #[Test]
     public function a_declared_spawn_no_child_matches_is_reported_as_never_taken(): void
     {
         // the comparison the screen exists for: what was possible against what happened

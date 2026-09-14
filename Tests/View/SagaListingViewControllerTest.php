@@ -7,6 +7,7 @@ namespace Storm\ApiOps\Tests\View;
 use Doctrine\DBAL\Connection;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
+use PHPUnit\Framework\Attributes\TestWith;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
 use Storm\ApiOps\Error\AnonymousReadRefused;
@@ -150,6 +151,28 @@ final class SagaListingViewControllerTest extends TestCase
     }
 
     #[Test]
+    #[TestWith(['true', true])]
+    #[TestWith(['1', true])]
+    #[TestWith(['%20true%20', true])]
+    #[TestWith(['false', false])]
+    #[TestWith(['0', false])]
+    #[TestWith(['', false])]
+    #[TestWith(['TRUE', false])]
+    #[TestWith(['yes', false])]
+    public function the_waived_checkbox_matches_the_effective_sql_filter(string $value, bool $active): void
+    {
+        $body = $this->body('?waived='.$value);
+        $sql = $this->lastRead()['sql'];
+        if ($active) {
+            self::assertStringContainsString('i.waived_at IS NOT NULL', $sql);
+            self::assertStringContainsString('name="waived" value="1" checked', $body);
+        } else {
+            self::assertStringNotContainsString('i.waived_at IS NOT NULL', $sql);
+            self::assertStringContainsString('name="waived" value="1">', $body);
+        }
+    }
+
+    #[Test]
     public function every_filter_reaches_the_read_and_not_only_the_form(): void
     {
         // a filter parsed and dropped still comes back in its box, so the form proves nothing about
@@ -280,7 +303,7 @@ final class SagaListingViewControllerTest extends TestCase
             'retry_total' => 0,
             'started_at' => null,
             'updated_at' => null,
-            'waived_at' => null,
+            'global_deadline_consumed_at' => null, 'waived_at' => null,
             'paused_at' => null,
             'parent_correlation_id' => null,
             'type_paused' => false,

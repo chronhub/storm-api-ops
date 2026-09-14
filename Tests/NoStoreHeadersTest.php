@@ -48,6 +48,44 @@ final class NoStoreHeadersTest extends TestCase
         self::assertSame('max-age=60, public', $bare->getResponse()->headers->get('Cache-Control'));
     }
 
+    #[Test]
+    public function a_custom_controller_uses_the_routed_resource_class_without_an_operation(): void
+    {
+        $event = $this->eventFor(null);
+        $event->getRequest()->attributes->set('_api_resource_class', StreamResource::class);
+        $event->getResponse()->headers->set('Cache-Control', 'public, max-age=60');
+
+        (new NoStoreHeaders)($event);
+
+        self::assertSame('no-store, private', $event->getResponse()->headers->get('Cache-Control'));
+    }
+
+    #[Test]
+    public function foreign_and_non_string_route_metadata_do_not_change_the_response(): void
+    {
+        foreach ([stdClass::class, null, [], false, 12] as $class) {
+            $event = $this->eventFor(null);
+            $event->getRequest()->attributes->set('_api_resource_class', $class);
+            $event->getResponse()->headers->set('Cache-Control', 'public, max-age=60');
+
+            (new NoStoreHeaders)($event);
+
+            self::assertSame('max-age=60, public', $event->getResponse()->headers->get('Cache-Control'));
+        }
+    }
+
+    #[Test]
+    public function a_resolved_foreign_operation_is_not_reclassified_by_route_metadata(): void
+    {
+        $event = $this->eventFor(new Get(class: stdClass::class));
+        $event->getRequest()->attributes->set('_api_resource_class', StreamResource::class);
+        $event->getResponse()->headers->set('Cache-Control', 'public, max-age=60');
+
+        (new NoStoreHeaders)($event);
+
+        self::assertSame('max-age=60, public', $event->getResponse()->headers->get('Cache-Control'));
+    }
+
     private function eventFor(?Get $operation): ResponseEvent
     {
         $request = Request::create('/_storm/streams');

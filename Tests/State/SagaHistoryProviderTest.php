@@ -171,7 +171,7 @@ final class SagaHistoryProviderTest extends TestCase
                 $this->read($filters);
                 self::fail('a fractional value must not pass');
             } catch (MalformedQueryParameter $e) {
-                self::assertStringContainsString(array_values($filters)[0], $e->getMessage());
+                self::assertStringContainsString(array_first($filters), $e->getMessage());
             }
         }
     }

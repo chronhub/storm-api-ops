@@ -299,7 +299,7 @@ final class SagaListingProviderTest extends TestCase
             'retry_total' => 0,
             'started_at' => null,
             'updated_at' => null,
-            'waived_at' => null,
+            'global_deadline_consumed_at' => null, 'waived_at' => null,
             'paused_at' => null,
             'parent_correlation_id' => null,
             'type_paused' => false,

@@ -16,9 +16,10 @@ use function sprintf;
  * What is waiting in storm's own queues, and how long the oldest of it has waited.
  *
  * Two things this screen refuses to blur, both bought with an incident behind them. A collector that
- * failed is announced ABOVE the numbers rather than under them: a block missing because its read
- * threw looks exactly like a queue that is empty, and an operator reading the page top-down would
- * act on the wrong one. And a retained row is never called waiting; the saga command outbox holds
+ * failed is announced ABOVE the numbers rather than under them: the available data may be
+ * incomplete, and a missing value must not be mistaken for an empty queue. A failed collector
+ * does not identify which backlog families are affected. And a retained row is never called
+ * waiting; the saga command outbox holds
  * millions of `published` rows by design, and a column that summed them under a heading about
  * backlog would invent an incident every time the page is opened.
  */
@@ -102,7 +103,7 @@ final readonly class BacklogView
         }
 
         return sprintf(
-            '<ul class="degraded"><li>%d collector(s) failed during this read, so their block is MISSING rather than empty: %s</li></ul>',
+            '<ul class="degraded"><li>%d collector(s) failed during this read: %s. Backlog data may be incomplete; missing values must not be read as zero.</li></ul>',
             count($degraded),
             $this->page->text(implode(', ', $degraded)),
         );

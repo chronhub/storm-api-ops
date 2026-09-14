@@ -57,7 +57,7 @@ final class SagaCorrelationLineageTest extends TestCase
     {
         $instance = [[
             'workflow_type' => 'transfer', 'state_key' => 'await_legs', 'status' => 'running', 'version' => 3,
-            'started_at' => null, 'updated_at' => null, 'waived_at' => null, 'generation' => 1,
+            'started_at' => null, 'updated_at' => null, 'global_deadline_consumed_at' => null, 'waived_at' => null, 'generation' => 1,
             'definition_version' => 1, 'retry_total' => 0, 'retries' => null, 'compensations' => null,
             'parent_workflow_type' => null, 'parent_correlation_id' => null, 'root_correlation_id' => null,
             'state_version' => 1, 'vars' => null, 'retimes' => 0,

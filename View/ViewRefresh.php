@@ -14,8 +14,8 @@ use function min;
  * The reload interval an operator asked for, clamped where a screen can afford it.
  *
  * Clamped and never refused: a refresh box is a comfort control on a read-only page, and a typo in
- * it must not cost the operator the screen they came for. The ceiling is what keeps a forgotten tab
- * from polling the store forever.
+ * it must not cost the operator the screen they came for. The ceiling bounds the delay between
+ * reloads; it does not stop an open tab from polling or enforce a minimum polling interval.
  */
 final readonly class ViewRefresh
 {

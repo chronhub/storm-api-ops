@@ -17,6 +17,7 @@ use Storm\ApiOps\Error\MalformedQueryParameter;
 use Storm\ApiOps\OpsActorGate;
 use Storm\ApiOps\OpsAuditLog;
 use Storm\ApiOps\State\CorrelationEventsProvider;
+use Storm\ApiOps\State\CorrelationIdSet;
 use Storm\ApiOps\State\PageWindow;
 use Storm\ApiOps\Tests\Fixture\RecordingLog;
 use Storm\ApiOps\Tests\Fixture\StreamedEvent;
@@ -28,6 +29,10 @@ use Storm\Chronicler\Store\StreamReader;
 use Storm\Clock\PointInTime;
 use Storm\Message\Header;
 use Storm\Message\Message;
+
+use function array_map;
+use function implode;
+use function range;
 
 final class CorrelationEventsProviderTest extends TestCase
 {
@@ -73,6 +78,40 @@ final class CorrelationEventsProviderTest extends TestCase
         $qb = $this->capture(['ids' => 'corr-9, corr-9\x1fkyc ,corr-9\x1fdocs']);
 
         self::assertSame(['corr-9', 'corr-9\x1fkyc', 'corr-9\x1fdocs'], $qb->getParameter('correlationIds'));
+    }
+
+    #[Test]
+    #[Group('adversarial')]
+    public function a_set_at_the_width_ceiling_reaches_the_filter_whole(): void
+    {
+        // the boundary is where a cap is worth pinning: the whole admitted set must land in the
+        // bound parameter, id for id and in order, so nothing is quietly dropped between the parse
+        // and the predicate and served as a complete trace
+        $ids = $this->ids(CorrelationIdSet::MAX_IDS);
+
+        $qb = $this->capture(['ids' => implode(',', $ids)]);
+
+        self::assertSame($ids, $qb->getParameter('correlationIds'));
+    }
+
+    #[Test]
+    #[Group('adversarial')]
+    public function a_set_wider_than_the_ceiling_is_refused_rather_than_narrowed(): void
+    {
+        // this window answers in JSON and its envelope carries no notice, so a narrowed set would be
+        // read as the complete trace: the typed 422 is the only answer the caller can act on
+        $reader = $this->createMock(StreamReader::class);
+        $reader->expects($this->never())->method('retrieveByFilter');
+
+        try {
+            $this->provider($reader)->provide(new GetCollection, [], [
+                'filters' => ['ids' => implode(',', $this->ids(CorrelationIdSet::MAX_IDS + 1))],
+            ]);
+            self::fail('a set wider than the ceiling must never reach the reader');
+        } catch (MalformedQueryParameter $e) {
+            self::assertStringContainsString('at most '.CorrelationIdSet::MAX_IDS, $e->getMessage());
+            self::assertStringContainsString('got '.(CorrelationIdSet::MAX_IDS + 1), $e->getMessage());
+        }
     }
 
     #[Test]
@@ -167,6 +206,14 @@ final class CorrelationEventsProviderTest extends TestCase
         $captured->apply($qb);
 
         return $qb;
+    }
+
+    /**
+     * @return non-empty-list<string>
+     */
+    private function ids(int $count): array
+    {
+        return array_map(static fn (int $i): string => 'corr-'.$i, range(1, $count));
     }
 
     private function reader(callable $onFilter): StreamReader

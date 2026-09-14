@@ -57,7 +57,7 @@ final class BacklogViewControllerTest extends TestCase
 
         self::assertIsString($body);
         self::assertStringContainsString('ThrowingCollector', $body);
-        self::assertStringContainsString('MISSING rather than empty', $body);
+        self::assertStringContainsString('Backlog data may be incomplete; missing values must not be read as zero.', $body);
     }
 
     #[Test]
@@ -81,9 +81,9 @@ final class BacklogViewControllerTest extends TestCase
 
     private function collector(string $family, int $value): MetricsCollector
     {
-        return new class($family, $value) implements MetricsCollector
+        return new readonly class($family, $value) implements MetricsCollector
         {
-            public function __construct(private readonly string $family, private readonly int $value) {}
+            public function __construct(private string $family, private int $value) {}
 
             public function families(): array
             {

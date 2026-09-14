@@ -6,6 +6,8 @@ namespace Storm\ApiOps\View;
 
 use Storm\ApiOps\Error\AnonymousReadRefused;
 use Storm\ApiOps\OpsActorGate;
+use Storm\ApiOps\OpsAuditLog;
+use Storm\ApiOps\State\CorrelationIdSet;
 use Storm\ApiOps\State\PageWindow;
 use Storm\ApiOps\State\StoredEventResourceFactory;
 use Storm\Chronicler\Query\CorrelationFeedFilter;
@@ -15,15 +17,11 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Attribute\AsController;
 use Throwable;
 
-use function array_filter;
-use function array_map;
-use function array_values;
-use function explode;
+use function count;
 use function in_array;
 use function max;
 use function min;
 use function sprintf;
-use function trim;
 
 /**
  * The correlation trace screen: reads what T1 already serves and renders it, nothing more.
@@ -48,7 +46,12 @@ use function trim;
 #[AsController]
 final readonly class CorrelationViewController
 {
-    /** The lineage walk stops here; a spike screen has no business paging a tree. */
+    /**
+     * The lineage walk stops here; a spike screen has no business paging a tree. It is the walk's
+     * own stop and not the predicate's: the composed set also stops at the width every correlation
+     * surface shares, whichever of the two comes first, so widening by checkbox can never reach a
+     * set a typed one would be refused for.
+     */
     public const int MAX_CHILDREN = 50;
 
     public function __construct(
@@ -57,6 +60,7 @@ final readonly class CorrelationViewController
         private StoredEventResourceFactory $resources,
         private CorrelationTraceView $view,
         private CorrelationLineage $lineage,
+        private OpsAuditLog $audit,
     ) {}
 
     /**
@@ -74,11 +78,22 @@ final readonly class CorrelationViewController
 
         $withChildren = $request->query->get('children') === '1';
         $refresh = $this->refreshSeconds($request);
-        $ids = $this->setFrom($raw);
+        $ids = CorrelationIdSet::parse($raw);
         $notices = [];
 
         if ($ids === []) {
             return $this->html($this->view->render([], [], ['Name a correlation id to trace. Several, comma-separated, are traced together.'], $withChildren, $refresh));
+        }
+
+        if (CorrelationIdSet::isTooWide($ids)) {
+            // narrowed and reported, not refused: cutting the set can only match fewer rows, and an
+            // operator who pasted a batch still gets a trace plus the reason it is not the whole one
+            $notices[] = sprintf(
+                'Only the first %d of the %d ids named are traced; a wider set stops being a trace. Ask again with the rest.',
+                CorrelationIdSet::MAX_IDS,
+                count($ids),
+            );
+            $ids = CorrelationIdSet::narrow($ids);
         }
 
         if ($withChildren) {
@@ -98,7 +113,14 @@ final readonly class CorrelationViewController
             $notices[] = sprintf('No stored event carries %s. The ids are traced exactly as given; an id that never rode a message has no footprint.', implode(', ', $ids));
         }
 
-        return $this->html($this->view->render($events, $ids, $notices, $withChildren, $refresh));
+        if (count($events) >= PageWindow::MAX_LIMIT) {
+            $notices[] = sprintf('The trace reached the %d-event limit and may be incomplete.', PageWindow::MAX_LIMIT);
+        }
+
+        $response = $this->html($this->view->render($events, $ids, $notices, $withChildren, $refresh));
+        $this->audit->record('correlations.read', implode(',', $ids), sprintf('served %d event(s)', count($events)));
+
+        return $response;
     }
 
     /**
@@ -107,14 +129,27 @@ final readonly class CorrelationViewController
      */
     private function withLineage(array $ids): array
     {
+        // whichever ceiling comes first, so a composed set can never be wider than a typed one is
+        // admitted at, however either bound moves later
+        $ceiling = min(self::MAX_CHILDREN, CorrelationIdSet::MAX_IDS);
         $composed = $ids;
+        $leftOut = false;
 
         try {
             foreach ($ids as $id) {
                 foreach ($this->lineage->childrenOf($id) as $child) {
-                    if (! in_array($child, $composed, true) && count($composed) < self::MAX_CHILDREN) {
-                        $composed[] = $child;
+                    if (in_array($child, $composed, true)) {
+                        continue;
                     }
+
+                    if (count($composed) >= $ceiling) {
+                        $leftOut = true;
+
+                        // @infection-ignore-all; equivalent: the full set cannot shrink and later array entries cannot change the result
+                        continue;
+                    }
+
+                    $composed[] = $child;
                 }
             }
         } catch (Throwable $e) {
@@ -123,22 +158,20 @@ final readonly class CorrelationViewController
             return [$ids, sprintf('The lineage could not be resolved (%s); the set below is the one you typed.', $e::class)];
         }
 
+        if ($leftOut) {
+            // said before the two answers below, because a child that exists and did not fit is
+            // neither an absent lineage nor a complete one, and the operator acts differently on it.
+            // The size QUERIED is named and not the ceiling: a typed set already past the walk's own
+            // stop leaves the two numbers apart, and a notice naming one the set below contradicts
+            // costs the operator more than saying nothing would
+            return [$composed, sprintf('Lineage stopped at %d id(s); some children were left out of the set below.', count($composed))];
+        }
+
         if ($composed === $ids) {
             return [$ids, 'No child correlation was found, so the set below is the one you typed.'];
         }
 
         return [$composed, sprintf('Lineage composed: %d id(s) queried, the typed one(s) plus their saga children.', count($composed))];
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function setFrom(string $raw): array
-    {
-        return explode(',', $raw)
-                |> (static fn ($x) => array_map(trim(...), $x))
-                |> array_filter(...)
-                |> array_values(...);
     }
 
     private function refreshSeconds(Request $request): int
