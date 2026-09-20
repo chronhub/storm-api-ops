@@ -28,19 +28,32 @@ use Throwable;
  * one that just failed. Authorization is the exact opposite: {@see OpsActorGate} reads the
  * identity UNSHIELDED, because an unanswerable backend must fail the request closed, never demote
  * it.
+ *
+ * A dropped emission is reported once to the optional `OpsAuditDegradationObserver`, itself
+ * shielded. A failure raised while that signal is in flight, typically a listener recording again
+ * on a sink that is still down, is dropped without a second signal, so reentrance stays bounded.
  */
-final readonly class OpsAuditLog
+final class OpsAuditLog
 {
+    private bool $signaling = false;
+
     public function __construct(
-        private LoggerInterface $logger,
-        private ?IdentityProvider $identity = null,
+        private readonly LoggerInterface $logger,
+        private readonly ?IdentityProvider $identity = null,
+        private readonly ?OpsAuditDegradationObserver $observer = null,
     ) {}
 
     public function record(string $action, string $subject, string $outcome): void
     {
         try {
             $actor = $this->identity?->currentActor();
+        } catch (Throwable) {
+            $this->signal(OpsAuditFailureStage::Identity);
 
+            return;
+        }
+
+        try {
             $this->logger->info('storm_api_ops mutation', [
                 'action' => $action,
                 'subject' => $subject,
@@ -49,7 +62,27 @@ final readonly class OpsAuditLog
                 'actor_type' => $actor?->type,
             ]);
         } catch (Throwable) {
-            // dropped on purpose: the audit never owns the outcome
+            // never retried: the audit never owns the outcome
+            $this->signal(OpsAuditFailureStage::Sink);
+        }
+    }
+
+    private function signal(OpsAuditFailureStage $stage): void
+    {
+        $observer = $this->observer;
+
+        if ($observer === null || $this->signaling) {
+            return;
+        }
+
+        $this->signaling = true;
+
+        try {
+            $observer->auditDegraded($stage);
+        } catch (Throwable) {
+            // a failing observer is contained like the sink it reports on
+        } finally {
+            $this->signaling = false;
         }
     }
 }

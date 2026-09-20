@@ -81,7 +81,7 @@ Beneath the firewall, the package carries its own defenses:
 The following served reads emit a best-effort audit record:
 
 - The stream event feed.
-- Correlation events in JSON and the HTML correlation trace.
+- Correlation events.
 - The aggregate state.
 
 These records use the same audit channel as mutations. Emission does not guarantee delivery or
@@ -91,7 +91,9 @@ Mutations are recorded in the audit log (`storm_api_ops mutation` records: actio
 outcome, and the Bureau-resolved actor when the app aliases an `IdentityProvider`) — a
 BEST-EFFORT structured record by contract: routing, retention and durability belong to the
 app's logging stack, the same doctrine as the alerts engine, and a logging outage never blocks
-or fails the mutation itself. The durable trail for the riskiest verb already lives in the
+or fails the mutation itself. A dropped record is dispatched once as an in-process
+`OpsAuditDegraded` event naming only its failed stage, `identity` or `sink`; it reaches an alert
+only through a listener the app registers, and it is neither persisted nor a metric. The durable trail for the riskiest verb already lives in the
 event store: a saga cancel carries its operator `reason` on `SagaCancelled`.
 
 The events view is the HYDRATED CURRENT one: aliases resolved, upcasters applied, payloads
@@ -122,5 +124,7 @@ the architecture gates and the full internal documentation live.
 
 ---
 
-*Pre-version: this package changes without deprecation cycles — pin a commit if you need
-stability, expect resets rather than migrations until the first tagged version.*
+*Experimental 0.x: this package changes without deprecation cycles — no backward-compatibility
+promise and no legacy layer. Pin an exact 0.x tag or commit for reproducibility; pinning fixes
+history, not a stable API. Schema changes are resets, not migrations, and a reset destroys data,
+so it stays on disposable environments.*

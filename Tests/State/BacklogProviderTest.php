@@ -16,7 +16,6 @@ use Storm\ApiOps\OpsAuditLog;
 use Storm\ApiOps\State\BacklogProvider;
 use Storm\ApiOps\Tests\Fixture\OtherThrowingCollector;
 use Storm\ApiOps\Tests\Fixture\ThrowingCollector;
-use Storm\ApiOps\View\BacklogView;
 use Storm\Telemetry\Metrics\MetricFamily;
 use Storm\Telemetry\Metrics\MetricSample;
 use Storm\Telemetry\Metrics\MetricsCollector;
@@ -114,15 +113,6 @@ final class BacklogProviderTest extends TestCase
         $page = $this->provider([$this->collector($families), new ThrowingCollector])->provide(new Get);
         self::assertSame(BacklogProvider::FAMILIES, array_column($page->families, 'name'));
         self::assertSame(['ThrowingCollector'], $page->degraded);
-
-        $body = new BacklogView()->render($page, 0);
-        self::assertStringContainsString('1 collector(s) failed during this read', $body);
-        self::assertStringContainsString('ThrowingCollector', $body);
-        foreach (BacklogProvider::FAMILIES as $name) {
-            self::assertStringContainsString($name, $body);
-        }
-        self::assertStringNotContainsString('their block is MISSING', $body);
-        self::assertStringContainsString('Backlog data may be incomplete; missing values must not be read as zero.', $body);
     }
 
     #[Test]

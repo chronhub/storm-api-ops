@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Symfony\Component\DependencyInjection\Loader\Configurator;
 
+use Storm\ApiOps\EventDispatcherOpsAuditDegradationObserver;
+use Storm\ApiOps\OpsAuditDegradationObserver;
+
 /*
  * ApiOps package wiring.
  *
@@ -23,7 +26,11 @@ return static function (ContainerConfigurator $container): void {
         ->exclude([
             dirname(__DIR__).'/Resource/', // resource DTOs, built by the providers, not services
             dirname(__DIR__).'/State/PageWindow.php', // static window arithmetic, not a service
+            dirname(__DIR__).'/OpsAuditDegraded.php', // event payload, built by the observer
             dirname(__DIR__).'/Tests/',
             dirname(__DIR__).'/config/',
         ]);
+
+    // audit degradation reaches the app's event dispatcher; a host listener decides what it becomes
+    $services->alias(OpsAuditDegradationObserver::class, EventDispatcherOpsAuditDegradationObserver::class);
 };

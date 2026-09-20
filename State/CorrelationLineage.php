@@ -2,16 +2,17 @@
 
 declare(strict_types=1);
 
-namespace Storm\ApiOps\View;
+namespace Storm\ApiOps\State;
 
 use Throwable;
 
 /**
- * The child correlations of one correlation, which is all a screen needs to widen a trace.
+ * The child correlations of one correlation, which is all a reader needs to widen a trace.
  *
- * It exists so the screen stops knowing where children come from or what shape they arrive in. A
+ * It exists so the reader stops knowing where children come from or what shape they arrive in. A
  * lineage is resolved where it is known and the framework offers no preset for it; this names the
- * one question a view is allowed to ask, and nothing beyond it.
+ * one question a consumer is allowed to ask, and nothing beyond it. It renders nothing: a page
+ * built on it belongs to its consumer.
  */
 interface CorrelationLineage
 {

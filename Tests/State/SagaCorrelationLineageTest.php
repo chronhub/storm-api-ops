@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Storm\ApiOps\Tests\View;
+namespace Storm\ApiOps\Tests\State;
 
 use Doctrine\DBAL\Connection;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
-use Storm\ApiOps\View\SagaCorrelationLineage;
+use Storm\ApiOps\State\SagaCorrelationLineage;
 use Storm\Saga\Build\WorkflowRegistry;
 use Storm\Saga\Store\Inspection\SagaInspectionGateway;
 
@@ -27,7 +27,7 @@ final class SagaCorrelationLineageTest extends TestCase
     #[Group('adversarial')]
     public function only_the_child_id_s_cross_the_seam(): void
     {
-        // the whole reason this adapter exists: a screen walking `$snapshot->children` would be
+        // the whole reason this adapter exists: a consumer walking `$snapshot->children` would be
         // coupled to the coordination module's record for one string per row
         $children = $this->lineage([[
             'workflow_type' => 'settlement_leg', 'correlation_id' => 'corr-child', 'status' => 'done',
