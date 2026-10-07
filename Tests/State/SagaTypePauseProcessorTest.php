@@ -9,6 +9,7 @@ use LogicException;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\NullLogger;
 use RuntimeException;
 use Storm\ApiOps\Error\AnonymousMutationRefused;
 use Storm\ApiOps\Error\SagaPauseRefused;
@@ -215,7 +216,7 @@ final class SagaTypePauseProcessorTest extends TestCase
         return new SagaTypePauseProcessor(
             $instances,
             $audit,
-            new OpsActorGate($audit, null, allowAnonymous: $allowAnonymous),
+            new OpsActorGate($allowAnonymous ? new OpsAuditLog(new NullLogger) : $audit, null, allowAnonymous: $allowAnonymous),
             $registry ?? self::registry('payment'),
         );
     }

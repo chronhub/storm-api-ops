@@ -9,10 +9,13 @@ use ApiPlatform\State\ProviderInterface;
 use Doctrine\DBAL\Exception as DbalException;
 use Override;
 use Storm\AggregateRepository\AggregateRepositoryManager;
+use Storm\AggregateRepository\HistoricalAggregateInspector;
 use Storm\AggregateRepository\Snapshot\PersonalDataSnapshotGuard;
 use Storm\ApiOps\AggregateCatalog;
 use Storm\ApiOps\Error\AggregateFoldRefused;
 use Storm\ApiOps\Error\AnonymousReadRefused;
+use Storm\ApiOps\Error\MalformedQueryParameter;
+use Storm\ApiOps\Error\OperatorPermissionRefused;
 use Storm\ApiOps\OpsActorGate;
 use Storm\ApiOps\OpsAuditLog;
 use Storm\ApiOps\Resource\AggregateStateResource;
@@ -24,6 +27,8 @@ use Storm\Contracts\Aggregate\SnapshotableAggregateRoot;
 use Storm\Contracts\Chronicler\StorageFailure;
 use Storm\Contracts\Chronicler\UnknownEventType;
 use Storm\Stream\StreamName;
+use Storm\Support\Console\PositiveIntOption;
+use Throwable;
 
 /**
  * One aggregate for introspection: resolve the category through the app's own `storm.aggregates`
@@ -35,7 +40,15 @@ use Storm\Stream\StreamName;
  *
  * Two refusals stand before the snapshotable fold, both 422 and both decided on one indexed row: a
  * head past the replay ceiling, and a stream carrying a `#[Personal]` event, whose fold would render
- * the subject's keys decrypted into an HTTP response.
+ * the subject's keys decrypted into an HTTP response. The personal-data probe runs again after
+ * state materialization, before success auditing or publication, to catch appends during replay.
+ *
+ * A `version` query parameter asks for the state at that past version instead, a diagnostic that
+ * leaves the current read above untouched. It is parsed strictly, a malformed value being a 400,
+ * and a version past the observed head is a 404. The snapshotable answer comes from the
+ * repository's `HistoricalAggregateInspector`, folded from version 1 by today's code and upcasters
+ * with no snapshot involved, behind the same personal-data refusal and a ceiling on the requested
+ * version. The non-snapshotable answer stays the head-backed existence answer at that version.
  *
  * Every miss becomes a null and API Platform's native 404: an unknown category, an id that cannot
  * parse, no stream. For an ops browser each names nothing, and distinguishing "malformed" from
@@ -71,11 +84,14 @@ final readonly class AggregateStateProvider implements ProviderInterface
     /**
      * {@inheritDoc}
      *
+     * @throws OperatorPermissionRefused when the application does not grant operator access
+     * @throws Throwable when an application identity or permission backend cannot answer
      * @throws AnonymousReadRefused when no actor is bound and the app did not opt out of the read gate
-     * @throws AggregateFoldRefused when the stream head exceeds the fold ceiling, or when the stream carries a `#[Personal]` event whose fold would render it decrypted
+     * @throws MalformedQueryParameter when `version` is present and is not a positive integer, a 400
+     * @throws AggregateFoldRefused when the stream head, or the requested `version`, exceeds the fold ceiling, or when the stream carries a `#[Personal]` event whose fold would render it decrypted
      * @throws StorageFailure on a store read or deserialization failure
      * @throws UnknownEventType when a stored event type resolves to no known event class on the snapshotable fold
-     * @throws CorruptAggregateHistory when the replay contradicts its own version header on the snapshotable fold
+     * @throws CorruptAggregateHistory when the replay contradicts its own version header on the snapshotable fold, or stops before a requested `version` the head has passed
      */
     #[Override]
     public function provide(Operation $operation, array $uriVariables = [], array $context = []): ?AggregateStateResource
@@ -87,6 +103,7 @@ final readonly class AggregateStateProvider implements ProviderInterface
         // @infection-ignore-all equivalent: the id's cast, same reason as the category's above
         $this->gate->assertOwnedIdentityForRead('aggregate.read', $category.'-'.(string) ($uriVariables['id'] ?? ''));
 
+        $requested = $this->requestedVersion($context);
         $entry = $this->catalog->entryFor($category);
 
         if ($entry === null) {
@@ -111,6 +128,23 @@ final readonly class AggregateStateProvider implements ProviderInterface
                 return null;
             }
 
+            if ($requested !== null) {
+                // a head at or past the target proves the version existed under the head
+                // invariant; nothing is decoded, so this answer never attests the events themselves
+                if ($version < $requested) {
+                    return null;
+                }
+
+                $this->audit->record('aggregate.read', $category.'-'.$id->toString(), sprintf('served existence at historical version %d', $requested));
+
+                return new AggregateStateResource(
+                    category: $category,
+                    id: $id->toString(),
+                    version: $requested,
+                    state: null,
+                );
+            }
+
             // existence and version are the class of information the uniform 404 shields from the
             // anonymous: an actor enumerating them is never invisible in the module's own channel
             $this->audit->record('aggregate.read', $category.'-'.$id->toString(), sprintf('served existence at version %d', $version));
@@ -125,20 +159,75 @@ final readonly class AggregateStateProvider implements ProviderInterface
 
         $stream = new StreamName($category)->withQualifier($id->toString())->toString();
 
+        // a historical fold replays exactly the requested length, so its ceiling is decided on the
+        // target alone, before any read
+        if ($requested !== null && $requested > HistoricalAggregateInspector::MAX_VERSIONS) {
+            $refusal = AggregateFoldRefused::versionPastCeiling($category, $id->toString(), $requested, HistoricalAggregateInspector::MAX_VERSIONS);
+            $this->audit->record('aggregate.read', $category.'-'.$id->toString(), 'refused: '.$refusal->getMessage());
+
+            throw $refusal;
+        }
+
         // the ceiling before the fold: the head is one indexed row and bounds the worst replay
         $headVersion = $this->heads->lastVersion($stream);
 
-        if ($headVersion > self::MAX_FOLD_VERSIONS) {
+        if ($requested === null && $headVersion > self::MAX_FOLD_VERSIONS) {
             $refusal = AggregateFoldRefused::tooLong($category, $id->toString(), $headVersion, self::MAX_FOLD_VERSIONS);
             $this->audit->record('aggregate.read', $category.'-'.$id->toString(), 'refused: '.$refusal->getMessage());
 
             throw $refusal;
         }
 
-        // The crypto-shredding exclusion, on the SAME probe the sweep uses to refuse writing a
-        // snapshot to disk. A fold renders declared keys decrypted, so this surface would serve the
-        // artifact the guard exists to prevent; the check is one indexed row against what is actually
-        // stored, and it runs BEFORE the replay it makes pointless.
+        // a version the observed head has not reached does not exist yet: the same silence as an
+        // absent stream, decided before the personal-data probe and the fold it would make pointless
+        if ($requested !== null && $headVersion < $requested) {
+            return null;
+        }
+
+        // Refuse known personal streams before paying for a fold, then recheck the completed
+        // state before exposing it: a concurrent append can enter the replay after this probe.
+        $this->assertPublicState($stream, $category, $id->toString());
+
+        if ($requested !== null) {
+            // the repository boundary's read-only fold, never a snapshot and never an aggregate:
+            // the probe above covered the whole stream, so a personal event recorded after the
+            // target refuses too, and an append after the observed head cannot enter a read
+            // bounded at the target
+            $historical = $this->aggregates->inspectorFor($entry['class'])->stateAt($id, $requested);
+            $this->assertPublicState($stream, $category, $id->toString());
+            $this->audit->record('aggregate.read', $category.'-'.$id->toString(), sprintf('served historical state at version %d', $historical->version));
+
+            return new AggregateStateResource(
+                category: $category,
+                id: $id->toString(),
+                version: $historical->version,
+                state: $historical->state,
+            );
+        }
+
+        $aggregate = $this->aggregates->for($entry['class'])->retrieve($id);
+
+        if ($aggregate === null) {
+            return null;
+        }
+
+        // Materialize before the final probe so later appends cannot change the response state.
+        $state = $aggregate instanceof SnapshotableAggregateRoot ? $aggregate->toSnapshot() : null; // @phpstan-ignore instanceof.alwaysTrue (belt for a catalog entry lying about its class at runtime)
+        $this->assertPublicState($stream, $category, $id->toString());
+
+        // the payload-bearing read leaves a trace, the twin of the event feed's audit line
+        $this->audit->record('aggregate.read', $category.'-'.$id->toString(), sprintf('served at version %d', $aggregate->version()));
+
+        return new AggregateStateResource(
+            category: $category,
+            id: $id->toString(),
+            version: $aggregate->version(),
+            state: $state,
+        );
+    }
+
+    private function assertPublicState(string $stream, string $category, string $id): void
+    {
         try {
             $offendingType = $this->personalData->refusal($stream);
         } catch (DbalException $e) {
@@ -148,27 +237,42 @@ final readonly class AggregateStateProvider implements ProviderInterface
         }
 
         if ($offendingType !== null) {
-            $refusal = AggregateFoldRefused::personalDataInState($category, $id->toString(), $offendingType);
-            $this->audit->record('aggregate.read', $category.'-'.$id->toString(), 'refused: '.$refusal->getMessage());
+            $refusal = AggregateFoldRefused::personalDataInState($category, $id, $offendingType);
+            $this->audit->record('aggregate.read', $category.'-'.$id, 'refused: '.$refusal->getMessage());
 
             throw $refusal;
         }
+    }
 
-        $aggregate = $this->aggregates->for($entry['class'])->retrieve($id);
+    /**
+     * The `version` query parameter, null when absent.
+     *
+     * Present means integral in form and positive: `null`, an empty value, an array, a fraction, a
+     * sign or a number an int cannot hold are refused, never dropped, since a dropped target would
+     * silently serve the current state as the answer to a historical question.
+     *
+     * @param  array<string, mixed>  $context
+     * @return positive-int|null
+     *
+     * @throws MalformedQueryParameter when `version` is present and is not a positive integer
+     */
+    private function requestedVersion(array $context): ?int
+    {
+        $filters = $context['filters'] ?? [];
 
-        if ($aggregate === null) {
+        if (! is_array($filters) || ! array_key_exists('version', $filters)) {
             return null;
         }
 
-        // the payload-bearing read leaves a trace, the twin of the event feed's audit line
-        $this->audit->record('aggregate.read', $category.'-'.$id->toString(), sprintf('served at version %d', $aggregate->version()));
+        $raw = $filters['version'];
+        $version = PositiveIntOption::parse($raw);
 
-        // the guard above already proved the class snapshotable; the runtime check would be dead
-        return new AggregateStateResource(
-            category: $category,
-            id: $id->toString(),
-            version: $aggregate->version(),
-            state: $aggregate instanceof SnapshotableAggregateRoot ? $aggregate->toSnapshot() : null, // @phpstan-ignore instanceof.alwaysTrue (belt for a catalog entry lying about its class at runtime)
-        );
+        if ($version === null) {
+            // @infection-ignore-all equivalent: `sprintf` renders a scalar identically with or
+            // without the cast; the cast serves the analyzer, the branch beside it carries the type
+            throw MalformedQueryParameter::expectingAPositiveInteger('version', is_scalar($raw) ? (string) $raw : get_debug_type($raw));
+        }
+
+        return $version;
     }
 }

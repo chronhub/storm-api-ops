@@ -170,7 +170,7 @@ final class SagasProviderTest extends TestCase
 
         return new SagasProvider(
             new SagaInspectionGateway($connection, new WorkflowRegistry),
-            new OpsActorGate($audit, null, allowAnonymousReads: $anonymous),
+            new OpsActorGate($anonymous ? new OpsAuditLog(new NullLogger) : $audit, null, allowAnonymousReads: $anonymous),
         );
     }
 }

@@ -32,7 +32,7 @@ final class SagaRedriveRefused extends RuntimeException
                 RedriveOutcome::SagaNotRunning => 'the saga has settled or is gone; re-sending would put an effect in flight that nothing will ever receive.',
                 RedriveOutcome::StaleGeneration => 'that command belongs to an earlier run of this correlation and must never cross into the run that replaced it.',
                 RedriveOutcome::EffectUnproven => 'nobody proved this effect rolled back, so re-sending may execute it twice. Establish what happened downstream, then pass "force": true with a reason to own the risk.',
-                RedriveOutcome::Raced => 'the row moved while this ran — a settle or another operator got there first. Read it again and retry.',
+                RedriveOutcome::Raced => 'the saga is busy or the command changed concurrently. Read it again and retry.',
                 // both are outcomes the caller never sees as a refusal: applied, or a 404 by declaration
                 RedriveOutcome::Redriven, RedriveOutcome::NotFound => 'unexpected outcome.',
             },

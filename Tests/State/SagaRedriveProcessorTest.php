@@ -11,6 +11,7 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\AbstractLogger;
+use Psr\Log\NullLogger;
 use RuntimeException;
 use stdClass;
 use Storm\ApiOps\Error\AnonymousMutationRefused;
@@ -63,7 +64,7 @@ final class SagaRedriveProcessorTest extends TestCase
             $outbox,
             new SagaInspectionGateway($connection, new WorkflowRegistry),
             $audit,
-            new OpsActorGate($audit, null, allowAnonymous: true),
+            new OpsActorGate(new OpsAuditLog(new NullLogger), null, allowAnonymous: true),
         );
 
         try {
@@ -98,7 +99,7 @@ final class SagaRedriveProcessorTest extends TestCase
             $outbox,
             new SagaInspectionGateway($this->createStub(Connection::class), new WorkflowRegistry),
             $audit,
-            new OpsActorGate($audit, null, allowAnonymous: true),
+            new OpsActorGate(new OpsAuditLog(new NullLogger), null, allowAnonymous: true),
         );
 
         try {

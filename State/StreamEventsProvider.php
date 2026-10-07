@@ -10,6 +10,7 @@ use ApiPlatform\Metadata\Operation;
 use ApiPlatform\State\ProviderInterface;
 use Override;
 use Storm\ApiOps\Error\AnonymousReadRefused;
+use Storm\ApiOps\Error\OperatorPermissionRefused;
 use Storm\ApiOps\OpsActorGate;
 use Storm\ApiOps\OpsAuditLog;
 use Storm\ApiOps\Resource\StoredEventResource;
@@ -23,6 +24,7 @@ use Storm\Contracts\Clock\ClockExceptionContract;
 use Storm\Contracts\Serializer\SerializationExceptionContract;
 use Storm\Contracts\Stream\InvalidStreamException;
 use Storm\Stream\StreamName;
+use Throwable;
 
 /**
  * Stored events as an ops collection, the HTTP twin of `storm:events:inspect`: one provider for
@@ -32,7 +34,8 @@ use Storm\Stream\StreamName;
  * through the {@see \Storm\Chronicler\Record\PersonalDataVeil}: a `#[Personal]` class's declared keys show
  * what the store holds, the envelope, never the decrypted values; inspection reads without
  * decrypting, by doctrine. The stored headers ride along untouched. Bounded by construction
- * through `EventFeedFilter` and the server-owned window, read to the store's head: introspection
+ * through `EventFeedFilter` and the server-owned window. Every name selects its exact stream,
+ * including a bare category name. Reads reach the store's head: introspection
  * wants the latest, and a transient near-head gap is harmless to a browser, so no safe-head bound
  * is applied, which is a projector's discipline, not an inspector's.
  *
@@ -56,6 +59,8 @@ final readonly class StreamEventsProvider implements ProviderInterface
      *
      * @return list<StoredEventResource>
      *
+     * @throws OperatorPermissionRefused when the application does not grant operator access
+     * @throws Throwable when an application identity or permission backend cannot answer
      * @throws AnonymousReadRefused when no actor is bound and the app did not opt out of the read gate
      * @throws InvalidPosition when a stored row's position is malformed
      * @throws ClockExceptionContract when a stored point in time failed to be parsed
@@ -83,7 +88,7 @@ final readonly class StreamEventsProvider implements ProviderInterface
         /** @var array<string, mixed> $filters */
         $filters = $context['filters'] ?? [];
 
-        $filter = new EventFeedFilter($scope);
+        $filter = new EventFeedFilter($scope, exactStream: true);
         $filter->window(PageWindow::afterPosition($filters), PHP_INT_MAX, PageWindow::limit($filters));
 
         $items = [];

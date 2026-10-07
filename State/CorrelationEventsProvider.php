@@ -9,9 +9,10 @@ use ApiPlatform\State\ProviderInterface;
 use Override;
 use Storm\ApiOps\Error\AnonymousReadRefused;
 use Storm\ApiOps\Error\MalformedQueryParameter;
+use Storm\ApiOps\Error\OperatorPermissionRefused;
 use Storm\ApiOps\OpsActorGate;
 use Storm\ApiOps\OpsAuditLog;
-use Storm\ApiOps\Resource\StoredEventResource;
+use Storm\ApiOps\Resource\CorrelationEventsPageResource;
 use Storm\Chronicler\Exception\NotADomainEvent;
 use Storm\Chronicler\Query\CorrelationFeedFilter;
 use Storm\Chronicler\Store\StreamReader;
@@ -20,6 +21,7 @@ use Storm\Contracts\Chronicler\UndecodableRow;
 use Storm\Contracts\Chronicler\UnknownEventType;
 use Storm\Contracts\Clock\ClockExceptionContract;
 use Storm\Contracts\Serializer\SerializationExceptionContract;
+use Throwable;
 
 use function count;
 use function implode;
@@ -38,12 +40,11 @@ use function sprintf;
  * a preset meaning the whole tree wherever coordination happens to be installed would mean two
  * different things in two applications.
  *
- * There is no resume cursor, and the omission is the filter's shape rather than an oversight: it
- * carries a set of ids and nothing else. A correlation footprint is bounded by what one business
- * transaction wrote, so the server cap is the guard; a caller who reaches it is asking a question
- * this window is not the right shape for.
+ * The window reads one extra record to establish truncation, then returns at most the applied
+ * limit. The extra record is not converted to a response payload. No resume cursor is offered;
+ * `truncated` distinguishes an incomplete trace from an exactly full result.
  *
- * @implements ProviderInterface<StoredEventResource>
+ * @implements ProviderInterface<CorrelationEventsPageResource>
  */
 final readonly class CorrelationEventsProvider implements ProviderInterface
 {
@@ -57,8 +58,8 @@ final readonly class CorrelationEventsProvider implements ProviderInterface
     /**
      * {@inheritDoc}
      *
-     * @return list<StoredEventResource>
-     *
+     * @throws OperatorPermissionRefused when the application does not grant operator access
+     * @throws Throwable when an application identity or permission backend cannot answer
      * @throws AnonymousReadRefused when no actor is bound and the app did not opt out of the read gate
      * @throws MalformedQueryParameter when `ids` is absent, blank, holds nothing but separators, or
      *                                 names more ids than the predicate width admits
@@ -70,7 +71,7 @@ final readonly class CorrelationEventsProvider implements ProviderInterface
      * @throws NotADomainEvent when a stored row wraps a non-event, a corrupt read
      */
     #[Override]
-    public function provide(Operation $operation, array $uriVariables = [], array $context = []): array
+    public function provide(Operation $operation, array $uriVariables = [], array $context = []): CorrelationEventsPageResource
     {
         /** @var array<string, mixed> $filters */
         $filters = $context['filters'] ?? [];
@@ -82,8 +83,15 @@ final readonly class CorrelationEventsProvider implements ProviderInterface
 
         $ids = $this->setFrom($filters);
 
+        $limit = PageWindow::limit($filters);
         $items = [];
-        foreach ($this->reader->retrieveByFilter(new CorrelationFeedFilter($ids, PageWindow::limit($filters))) as $record) {
+        $truncated = false;
+        foreach ($this->reader->retrieveByFilter(new CorrelationFeedFilter($ids, $limit + 1)) as $record) {
+            if (count($items) === $limit) {
+                $truncated = true;
+
+                break;
+            }
             $items[] = $this->resources->fromRecord($record);
         }
 
@@ -91,7 +99,7 @@ final readonly class CorrelationEventsProvider implements ProviderInterface
         // events served over HTTP are what a drained store would otherwise never show
         $this->audit->record('correlations.read', implode(',', $ids), sprintf('served %d event(s)', count($items)));
 
-        return $items;
+        return new CorrelationEventsPageResource($items, $limit, $truncated);
     }
 
     /**
@@ -111,9 +119,8 @@ final readonly class CorrelationEventsProvider implements ProviderInterface
         }
 
         if (CorrelationIdSet::isTooWide($ids)) {
-            // refused rather than cut, the one place this window parts with the screen: a JSON
-            // envelope carries no notice, so a silently narrowed set would be served as a complete
-            // trace and the caller could not tell
+            // row truncation must not disguise a different query: an oversized id set is refused
+            // whole rather than silently narrowing which correlations the window traces
             throw MalformedQueryParameter::expectingANarrowerSet('ids', CorrelationIdSet::MAX_IDS, count($ids));
         }
 

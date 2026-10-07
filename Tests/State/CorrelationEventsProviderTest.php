@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Storm\ApiOps\Tests\State;
 
-use ApiPlatform\Metadata\GetCollection;
+use ApiPlatform\Metadata\Get;
 use Doctrine\DBAL\DriverManager;
 use Doctrine\DBAL\Query\QueryBuilder;
 use Generator;
@@ -50,7 +50,7 @@ final class CorrelationEventsProviderTest extends TestCase
 
         $this->expectException(AnonymousReadRefused::class);
 
-        $provider->provide(new GetCollection, [], ['filters' => ['ids' => '  ']]);
+        $provider->provide(new Get, [], ['filters' => ['ids' => '  ']]);
     }
 
     #[Test]
@@ -64,7 +64,7 @@ final class CorrelationEventsProviderTest extends TestCase
 
         foreach ([null, '', '   ', ' , , '] as $raw) {
             try {
-                $this->provider($reader)->provide(new GetCollection, [], ['filters' => ['ids' => $raw]]);
+                $this->provider($reader)->provide(new Get, [], ['filters' => ['ids' => $raw]]);
                 self::fail('an unusable set must never reach the reader');
             } catch (MalformedQueryParameter $e) {
                 self::assertStringContainsString('ids', $e->getMessage());
@@ -98,13 +98,12 @@ final class CorrelationEventsProviderTest extends TestCase
     #[Group('adversarial')]
     public function a_set_wider_than_the_ceiling_is_refused_rather_than_narrowed(): void
     {
-        // this window answers in JSON and its envelope carries no notice, so a narrowed set would be
-        // read as the complete trace: the typed 422 is the only answer the caller can act on
+        // a row truncation flag does not authorize narrowing the requested correlation set
         $reader = $this->createMock(StreamReader::class);
         $reader->expects($this->never())->method('retrieveByFilter');
 
         try {
-            $this->provider($reader)->provide(new GetCollection, [], [
+            $this->provider($reader)->provide(new Get, [], [
                 'filters' => ['ids' => implode(',', $this->ids(CorrelationIdSet::MAX_IDS + 1))],
             ]);
             self::fail('a set wider than the ceiling must never reach the reader');
@@ -125,7 +124,7 @@ final class CorrelationEventsProviderTest extends TestCase
             yield from [];
         });
 
-        $this->provider($reader)->provide(new GetCollection, [], ['filters' => ['ids' => 'corr-9']]);
+        $this->provider($reader)->provide(new Get, [], ['filters' => ['ids' => 'corr-9']]);
 
         self::assertInstanceOf(CorrelationFeedFilter::class, $captured);
     }
@@ -136,7 +135,7 @@ final class CorrelationEventsProviderTest extends TestCase
     {
         $qb = $this->capture(['ids' => 'corr-9', 'limit' => '10000']);
 
-        self::assertSame(PageWindow::MAX_LIMIT, $qb->getMaxResults());
+        self::assertSame(PageWindow::MAX_LIMIT + 1, $qb->getMaxResults());
     }
 
     #[Test]
@@ -154,16 +153,41 @@ final class CorrelationEventsProviderTest extends TestCase
 
         $log = new RecordingLog;
         $audit = new OpsAuditLog($log);
-        $page = new CorrelationEventsProvider($reader, new OpsActorGate($audit, null, allowAnonymousReads: true), $audit)
-            ->provide(new GetCollection, [], ['filters' => ['ids' => 'corr-9,corr-4']]);
+        $page = new CorrelationEventsProvider($reader, new OpsActorGate(new OpsAuditLog(new NullLogger), null, allowAnonymousReads: true), $audit)
+            ->provide(new Get, [], ['filters' => ['ids' => 'corr-9,corr-4']]);
 
-        self::assertCount(2, $page);
-        self::assertSame('account-1', $page[0]->stream);
+        self::assertCount(2, $page->events);
+        self::assertSame(PageWindow::DEFAULT_LIMIT, $page->limit);
+        self::assertFalse($page->truncated);
+        self::assertSame('account-1', $page->events[0]->stream);
 
         self::assertSame('correlations.read', $log->records[0]['context']['action']);
         // the subject is the set as asked, so an audit line replays the exact question
         self::assertSame('corr-9,corr-4', $log->records[0]['context']['subject']);
         self::assertSame('served 2 event(s)', $log->records[0]['context']['outcome']);
+    }
+
+    #[Test]
+    public function the_probe_record_is_not_returned_or_counted_as_served(): void
+    {
+        $reader = $this->createStub(StreamReader::class);
+        $reader->method('retrieveByFilter')->willReturnCallback(static function (): Generator {
+            yield self::record(1);
+            yield self::record(2);
+            self::fail('The provider must stop after the single probe record.');
+        });
+        $log = new RecordingLog;
+        $audit = new OpsAuditLog($log);
+        $page = new CorrelationEventsProvider($reader, new OpsActorGate($audit, null, allowAnonymousReads: true), $audit)
+            ->provide(new Get, [], ['filters' => ['ids' => 'corr', 'limit' => 1]]);
+
+        self::assertSame(1, $page->limit);
+        self::assertTrue($page->truncated);
+        self::assertCount(1, $page->events);
+        self::assertSame(1, $page->events[0]->position);
+        $lastRecord = array_last($log->records);
+        self::assertNotNull($lastRecord);
+        self::assertSame('served 1 event(s)', $lastRecord['context']['outcome']);
     }
 
     private static function record(int $position): EventRecord
@@ -190,7 +214,7 @@ final class CorrelationEventsProviderTest extends TestCase
             yield from [];
         });
 
-        $this->provider($reader)->provide(new GetCollection, [], ['filters' => $filters]);
+        $this->provider($reader)->provide(new Get, [], ['filters' => $filters]);
 
         self::assertInstanceOf(QueryFilter::class, $captured, 'the reader must be handed a filter');
 
@@ -228,6 +252,6 @@ final class CorrelationEventsProviderTest extends TestCase
     {
         $audit = new OpsAuditLog(new NullLogger);
 
-        return new CorrelationEventsProvider($reader, new OpsActorGate($audit, null, allowAnonymousReads: true), $audit);
+        return new CorrelationEventsProvider($reader, new OpsActorGate(new OpsAuditLog(new NullLogger), null, allowAnonymousReads: true), $audit);
     }
 }

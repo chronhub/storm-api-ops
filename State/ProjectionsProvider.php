@@ -10,10 +10,12 @@ use Doctrine\DBAL\Exception;
 use JsonException;
 use Override;
 use Storm\ApiOps\Error\AnonymousReadRefused;
+use Storm\ApiOps\Error\OperatorPermissionRefused;
 use Storm\ApiOps\OpsActorGate;
 use Storm\ApiOps\Resource\ProjectionResource;
 use Storm\Contracts\Chronicler\StorageFailure;
 use Storm\Projector\Store\ProjectionCatalog;
+use Throwable;
 
 use function array_map;
 use function is_string;
@@ -42,6 +44,8 @@ final readonly class ProjectionsProvider implements ProviderInterface
      * @throws JsonException when a projection's stored row is malformed
      * @throws StorageFailure when the safe-head or checkpoint read fails at the storage level
      * @throws Exception on a raw DBAL failure of the row or lease reads
+     * @throws OperatorPermissionRefused when the application does not grant operator access
+     * @throws Throwable when an application identity or permission backend cannot answer
      * @throws AnonymousReadRefused when no actor is bound and the app did not opt out of the read gate
      */
     #[Override]

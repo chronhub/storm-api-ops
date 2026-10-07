@@ -10,6 +10,7 @@ use LogicException;
 use Override;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Storm\ApiOps\Error\AnonymousMutationRefused;
+use Storm\ApiOps\Error\OperatorPermissionRefused;
 use Storm\ApiOps\Error\SagaCommandNotFound;
 use Storm\ApiOps\Error\SagaPauseRefused;
 use Storm\ApiOps\OpsActorGate;
@@ -54,6 +55,8 @@ final readonly class SagaPauseProcessor implements ProcessorInterface
     /**
      * {@inheritDoc}
      *
+     * @throws OperatorPermissionRefused when the application does not grant operator access
+     * @throws Throwable when an application identity or permission backend cannot answer
      * @throws AnonymousMutationRefused when no actor is bound and the app did not opt out, a 403
      * @throws SagaPauseRefused when there is nothing to freeze or nothing to lift, a 409
      * @throws LogicException when the operation declares an input class or an action this processor

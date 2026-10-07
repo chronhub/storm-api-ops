@@ -11,6 +11,7 @@ use JsonException;
 use LogicException;
 use Override;
 use Storm\ApiOps\Error\AnonymousMutationRefused;
+use Storm\ApiOps\Error\OperatorPermissionRefused;
 use Storm\ApiOps\Error\ProjectionNotFound;
 use Storm\ApiOps\Error\ProjectionTransitionRefused;
 use Storm\ApiOps\OpsActorGate;
@@ -24,6 +25,7 @@ use Storm\Projector\Exception\UnsupportedProjection;
 use Storm\Projector\Management\ProjectionManagement;
 use Storm\Projector\Store\ProjectionLifecycleStore;
 use Storm\Projector\Store\ProjectionStatus;
+use Symfony\Component\HttpFoundation\Response;
 use Throwable;
 
 /**
@@ -31,11 +33,12 @@ use Throwable;
  * `storm:projection:retry` / `storm:projection:reset`, over the SAME single sources: the transition
  * predicates on `ProjectionStatus` for pause/resume/stop, and `ProjectionManagement`'s own guards
  * for retry/reset. Each operation declares its verb in `storm_ops_action`; a successful mutation
- * answers the projection's fresh truth, exactly what the read would serve.
+ * answers the projection's fresh truth. Reset without a checkpoint initializes and clears output,
+ * then answers 204 without inventing a stored projection state.
  *
  * Every action lands in the audit log, refused or applied, before the refusal propagates.
  *
- * @implements ProcessorInterface<PauseProjectionInput|mixed, ProjectionResource>
+ * @implements ProcessorInterface<PauseProjectionInput|mixed, ProjectionResource|Response>
  */
 final readonly class ProjectionActionProcessor implements ProcessorInterface
 {
@@ -50,8 +53,10 @@ final readonly class ProjectionActionProcessor implements ProcessorInterface
     /**
      * {@inheritDoc}
      *
+     * @throws OperatorPermissionRefused when the application does not grant operator access
+     * @throws Throwable when an application identity or permission backend cannot answer
      * @throws AnonymousMutationRefused when no actor is bound and the app did not opt out, a 403
-     * @throws ProjectionNotFound when no checkpoint row carries the name, a 404 by declaration
+     * @throws ProjectionNotFound when a non-reset action has no checkpoint, or its fresh row disappears
      * @throws ProjectionTransitionRefused when the state machine refuses the verb, a 409
      * @throws UnknownProjection when retry/reset name no registered projection, a 404
      * @throws ProjectionBusy when a worker holds a live lease against retry/reset, a 409
@@ -61,7 +66,7 @@ final readonly class ProjectionActionProcessor implements ProcessorInterface
      * @throws Throwable on a storage failure of the mutation or the fresh read
      */
     #[Override]
-    public function process(mixed $data, Operation $operation, array $uriVariables = [], array $context = []): ProjectionResource
+    public function process(mixed $data, Operation $operation, array $uriVariables = [], array $context = []): ProjectionResource|Response
     {
         // @infection-ignore-all; equivalent: the cast serves the ANALYSER, the array being typed mixed; the router only ever supplies strings, so dropping it changes no runtime value
         $name = (string) ($uriVariables['name'] ?? '');
@@ -72,14 +77,18 @@ final readonly class ProjectionActionProcessor implements ProcessorInterface
         $this->gate->assertOwnedIdentity($action, $name);
 
         $row = $this->store->findRow($name);
-        if ($row === null) {
+        if ($row === null && $action !== 'reset') {
             $this->audit->record($action, $name, 'refused: no such projection');
 
             throw ProjectionNotFound::named($name);
         }
 
         try {
-            $this->apply($action, $name, $row->status, $data);
+            if ($action === 'reset') {
+                $this->management->reset($name);
+            } elseif ($row !== null) {
+                $this->apply($action, $name, $row->status, $data);
+            }
         } catch (Throwable $e) {
             // an infrastructure outage is a FAILURE, never a refusal: the audit line must not
             // read as an operator's verb declined when the store simply went away; every named
@@ -93,6 +102,10 @@ final readonly class ProjectionActionProcessor implements ProcessorInterface
         $this->audit->record($action, $name, 'applied');
 
         $fresh = $this->store->findRow($name);
+
+        if ($fresh === null && $row === null) {
+            return new Response(status: Response::HTTP_NO_CONTENT);
+        }
 
         if ($fresh === null) {
             // the verb applied and a retire won the read-back: answering the PRE-mutation row as
@@ -130,9 +143,6 @@ final readonly class ProjectionActionProcessor implements ProcessorInterface
             case 'retry':
                 $this->management->retry($name);
                 break;
-            case 'reset':
-                $this->management->reset($name);
-                break;
             default:
                 throw new LogicException(sprintf(
                     'Unknown ops action "%s": the operation\'s storm_ops_action extra property names no known verb — a resource declaration fault, not a missing projection.',
@@ -169,6 +179,7 @@ final readonly class ProjectionActionProcessor implements ProcessorInterface
     private static function statesWhere(callable $predicate): array
     {
         // @infection-ignore-all; equivalent: the reindex serves the declared list type only; the sole call sites spread the result, and a spread is insensitive to keys
-        return array_values(array_filter(ProjectionStatus::cases(), $predicate));
+        return array_filter(ProjectionStatus::cases(), $predicate)
+            |> array_values(...);
     }
 }

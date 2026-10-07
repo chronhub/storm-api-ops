@@ -9,10 +9,12 @@ use ApiPlatform\State\ProviderInterface;
 use Doctrine\DBAL\Exception;
 use Override;
 use Storm\ApiOps\Error\AnonymousReadRefused;
+use Storm\ApiOps\Error\OperatorPermissionRefused;
 use Storm\ApiOps\OpsActorGate;
 use Storm\ApiOps\Resource\OutboxFailedResource;
 use Storm\Chronicler\Outbox\FailedOutboxMessage;
 use Storm\Chronicler\Outbox\OutboxDeadLetter;
+use Throwable;
 
 /**
  * The outbox dead-letter as an ops collection, the HTTP twin of `storm:outbox:failed`.
@@ -36,6 +38,8 @@ final readonly class OutboxFailedProvider implements ProviderInterface
      *
      * @return list<OutboxFailedResource>
      *
+     * @throws OperatorPermissionRefused when the application does not grant operator access
+     * @throws Throwable when an application identity or permission backend cannot answer
      * @throws AnonymousReadRefused when no actor is bound and the app did not opt out of the read gate
      * @throws Exception on a DBAL read failure
      */

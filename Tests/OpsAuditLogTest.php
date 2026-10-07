@@ -173,8 +173,9 @@ final class OpsAuditLogTest extends TestCase
     #[Group('adversarial')]
     public function a_listener_recording_again_on_a_failing_sink_is_signaled_once(): void
     {
-        // without the in-flight guard this recurses until the stack blows: every nested record
-        // fails on the same sink and signals the same listener again
+        // without the in-flight guard every nested record fails on the same sink and signals the same
+        // listener again; the listener re-enters only once, so a missing guard shows as a second call
+        // instead of a recursion that would run until the stack blows
         $logger = $this->throwingLogger();
         $observer = new class() implements OpsAuditDegradationObserver
         {
@@ -182,10 +183,21 @@ final class OpsAuditLogTest extends TestCase
 
             public int $calls = 0;
 
+            private bool $inside = false;
+
             public function auditDegraded(OpsAuditFailureStage $stage): void
             {
                 $this->calls++;
-                $this->audit?->record('alert', 'audit', $stage->value);
+                if ($this->inside) {
+                    return;
+                }
+
+                $this->inside = true;
+                try {
+                    $this->audit?->record('alert', 'audit', $stage->value);
+                } finally {
+                    $this->inside = false;
+                }
             }
         };
         $audit = new OpsAuditLog($logger, null, $observer);

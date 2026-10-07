@@ -8,11 +8,13 @@ use ApiPlatform\Metadata\Operation;
 use ApiPlatform\State\ProviderInterface;
 use Override;
 use Storm\ApiOps\Error\AnonymousReadRefused;
+use Storm\ApiOps\Error\OperatorPermissionRefused;
 use Storm\ApiOps\OpsActorGate;
 use Storm\ApiOps\Resource\BacklogResource;
 use Storm\Telemetry\Metrics\MetricFamily;
 use Storm\Telemetry\Metrics\MetricSample;
 use Storm\Telemetry\Metrics\MetricsExposition;
+use Throwable;
 
 use function array_map;
 use function in_array;
@@ -53,6 +55,8 @@ final readonly class BacklogProvider implements ProviderInterface
     /**
      * {@inheritDoc}
      *
+     * @throws OperatorPermissionRefused when the application does not grant operator access
+     * @throws Throwable when an application identity or permission backend cannot answer
      * @throws AnonymousReadRefused when no actor is bound and the app did not opt out of the read gate
      */
     #[Override]

@@ -36,8 +36,8 @@
         "chronhub/storm-aggregate": "self.version",
         "chronhub/storm-clock": "self.version",
         "chronhub/storm-event-links": "self.version",
-        "phpstan/phpstan": "^2.2.8",
-        "phpunit/phpunit": "^13.3.0"
+        "phpstan/phpstan": "^2.2.16",
+        "phpunit/phpunit": "^13.4.0"
     },
     "autoload": {
         "psr-4": {

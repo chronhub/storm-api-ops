@@ -82,6 +82,8 @@ final class OpsAuditLog
         } catch (Throwable) {
             // a failing observer is contained like the sink it reports on
         } finally {
+            // the catch above swallows every Throwable, so this reset runs with or without the
+            // `finally`; it stays for the reader, and the mutation config leaves that mutant out
             $this->signaling = false;
         }
     }

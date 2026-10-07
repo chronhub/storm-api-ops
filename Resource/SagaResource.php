@@ -47,9 +47,9 @@ use function array_map;
  * no pending command leaves its outbox; a step already in flight completes, the status stays
  * untouched; then lift the freeze.
  *
- * Authorization stays app configuration through a method-scoped access_control on the ops zone
+ * Authorization uses the app-owned `OpsAuthorization` policy and method-scoped `access_control` on the ops zone
  * matching `^/(api/)?_storm`, where the `(api/)?` covers the bridge's `/api` mount; beneath it,
- * {@see OpsActorGate} refuses an anonymous mutation outright, a 403. Every verb refuses with a
+ * {@see OpsActorGate} requires an identity and an explicit permission, refusing either absence with a 403. Every verb refuses with a
  * 409 that names what declined: one of four read-back causes for the cancel, one of four guards for
  * the redrive, nothing to freeze or nothing to lift for the pair. The cancel and the redrive carry
  * the same `force` contract, which owns a risk rather than skipping a check.

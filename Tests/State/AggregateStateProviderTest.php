@@ -14,12 +14,14 @@ use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
 use RuntimeException;
 use Storm\AggregateRepository\AggregateRepositoryManager;
+use Storm\AggregateRepository\HistoricalAggregateInspector;
 use Storm\AggregateRepository\Snapshot\PersonalDataSnapshotGuard;
 use Storm\AggregateRepository\Snapshot\Snapshot;
 use Storm\AggregateRepository\Snapshot\SnapshotStore;
 use Storm\ApiOps\AggregateCatalog;
 use Storm\ApiOps\Error\AggregateFoldRefused;
 use Storm\ApiOps\Error\AnonymousReadRefused;
+use Storm\ApiOps\Error\MalformedQueryParameter;
 use Storm\ApiOps\OpsActorGate;
 use Storm\ApiOps\OpsAuditLog;
 use Storm\ApiOps\State\AggregateStateProvider;
@@ -30,6 +32,7 @@ use Storm\Chronicler\Directory\StreamHeadStore;
 use Storm\Chronicler\Store\DecisionAppend;
 use Storm\Chronicler\Store\StreamReader;
 use Storm\Clock\PointInTime;
+use Storm\Contracts\Aggregate\CorruptAggregateHistory;
 use Storm\Contracts\Chronicler\EventTypeMapper;
 use Storm\Contracts\Chronicler\StorageFailure;
 use Storm\Message\MessageEnricher;
@@ -200,6 +203,21 @@ final class AggregateStateProviderTest extends TestCase
     }
 
     #[Test]
+    public function a_failed_final_probe_never_publishes_or_audits_the_loaded_state(): void
+    {
+        $recorder = new RecordingLog;
+
+        try {
+            $this->provider(heads: ['opsthing-'.self::ID => 4], finalProbeThrows: true, snapshotAt: 4, audit: new OpsAuditLog($recorder))
+                ->provide(new Get, ['category' => 'opsthing', 'id' => self::ID]);
+            self::fail('a failed final probe must refuse the loaded state');
+        } catch (StorageFailure $e) {
+            self::assertStringContainsString('probe personal data on opsthing-'.self::ID, $e->getMessage());
+            self::assertSame('', $this->outcomes($recorder));
+        }
+    }
+
+    #[Test]
     public function a_snapshotable_aggregate_answers_its_state_and_its_version(): void
     {
         $answer = $this->provider(heads: ['opsthing-'.self::ID => 4], snapshotAt: 4)
@@ -228,6 +246,145 @@ final class AggregateStateProviderTest extends TestCase
         self::assertSame('opsthing-'.self::ID, $this->subjects($recorder));
     }
 
+    #[Test]
+    #[Group('adversarial')]
+    public function an_anonymous_historical_read_is_refused_before_its_version_is_read(): void
+    {
+        // actor first: a malformed version must not answer 400 to a caller the gate refuses
+        $this->expectException(AnonymousReadRefused::class);
+
+        $this->provider(anonymous: false)->provide(new Get, ['category' => 'opsthing', 'id' => self::ID], ['filters' => ['version' => 'abc']]);
+    }
+
+    #[Test]
+    #[Group('adversarial')]
+    public function a_malformed_version_is_refused_rather_than_read_as_the_current_state(): void
+    {
+        $reader = $this->createMock(StreamReader::class);
+        $reader->expects($this->never())->method('retrieveAll');
+        $reader->expects($this->never())->method('retrieveByFilter');
+
+        $this->expectException(MalformedQueryParameter::class);
+
+        $this->provider(heads: ['opsthing-'.self::ID => 4], snapshotAt: 4, reader: $reader)
+            ->provide(new Get, ['category' => 'opsthing', 'id' => self::ID], ['filters' => ['version' => '2.0']]);
+    }
+
+    #[Test]
+    #[Group('adversarial')]
+    public function a_historical_version_past_the_ceiling_is_refused_on_the_target_alone(): void
+    {
+        $reader = $this->createMock(StreamReader::class);
+        $reader->expects($this->never())->method('retrieveByFilter');
+        $recorder = new RecordingLog;
+
+        try {
+            $this->provider(heads: ['opsthing-'.self::ID => 1], reader: $reader, audit: new OpsAuditLog($recorder))
+                ->provide(new Get, ['category' => 'opsthing', 'id' => self::ID], ['filters' => ['version' => (string) (HistoricalAggregateInspector::MAX_VERSIONS + 1)]]);
+            self::fail('a target past the ceiling must be refused');
+        } catch (AggregateFoldRefused $e) {
+            self::assertSame('refused: '.$e->getMessage(), $this->outcomes($recorder));
+            self::assertSame('opsthing-'.self::ID, $this->subjects($recorder));
+        }
+    }
+
+    #[Test]
+    public function a_historical_version_past_the_head_is_a_miss_without_a_fold(): void
+    {
+        $reader = $this->createMock(StreamReader::class);
+        $reader->expects($this->never())->method('retrieveByFilter');
+
+        self::assertNull($this->provider(heads: ['opsthing-'.self::ID => 1], reader: $reader)
+            ->provide(new Get, ['category' => 'opsthing', 'id' => self::ID], ['filters' => ['version' => '2']]));
+    }
+
+    #[Test]
+    #[Group('adversarial')]
+    public function a_historical_read_of_a_personal_stream_is_refused_before_the_fold(): void
+    {
+        // the probe covers the WHOLE stream: a personal event recorded after the target still
+        // refuses, since the answer's absence of it cannot be proven without folding
+        $reader = $this->createMock(StreamReader::class);
+        $reader->expects($this->never())->method('retrieveByFilter');
+
+        $this->expectException(AggregateFoldRefused::class);
+
+        $this->provider(heads: ['opsthing-'.self::ID => 3], personal: 'App\\CustomerNamed', reader: $reader)
+            ->provide(new Get, ['category' => 'opsthing', 'id' => self::ID], ['filters' => ['version' => '1']]);
+    }
+
+    #[Test]
+    #[Group('adversarial')]
+    public function a_historical_target_the_head_passed_over_an_empty_history_is_corruption(): void
+    {
+        // the head vouches for the version, so an empty read is a truncated stream, never a miss
+        $this->expectException(CorruptAggregateHistory::class);
+
+        $this->provider(heads: ['opsthing-'.self::ID => 3])
+            ->provide(new Get, ['category' => 'opsthing', 'id' => self::ID], ['filters' => ['version' => '2']]);
+    }
+
+    #[Test]
+    #[Group('adversarial')]
+    public function a_plain_aggregate_answers_historical_existence_from_the_head_alone(): void
+    {
+        $reader = $this->createMock(StreamReader::class);
+        $reader->expects($this->never())->method('retrieveAll');
+        $reader->expects($this->never())->method('retrieveByFilter');
+        $recorder = new RecordingLog;
+
+        $answer = $this->provider(heads: ['plain-'.self::ID => 12], reader: $reader, audit: new OpsAuditLog($recorder))
+            ->provide(new Get, ['category' => 'plain', 'id' => self::ID], ['filters' => ['version' => '5']]);
+
+        self::assertNotNull($answer);
+        self::assertSame(5, $answer->version);
+        self::assertNull($answer->state);
+        self::assertSame('served existence at historical version 5', $this->outcomes($recorder));
+        self::assertNull($this->provider(heads: ['plain-'.self::ID => 4], reader: $reader)
+            ->provide(new Get, ['category' => 'plain', 'id' => self::ID], ['filters' => ['version' => '5']]));
+    }
+
+    #[Test]
+    public function historical_existence_at_the_head_itself_is_served_and_audited_under_its_stream(): void
+    {
+        $recorder = new RecordingLog;
+
+        $answer = $this->provider(heads: ['plain-'.self::ID => 5], audit: new OpsAuditLog($recorder))
+            ->provide(new Get, ['category' => 'plain', 'id' => self::ID], ['filters' => ['version' => '5']]);
+
+        self::assertNotNull($answer);
+        self::assertSame(5, $answer->version);
+        self::assertSame('plain-'.self::ID, $this->subjects($recorder));
+    }
+
+    #[Test]
+    public function a_historical_target_at_the_ceiling_itself_is_not_refused(): void
+    {
+        // the last foldable version passes the ceiling and meets the head, here a short one: a miss
+        self::assertNull($this->provider(heads: ['opsthing-'.self::ID => 1])
+            ->provide(new Get, ['category' => 'opsthing', 'id' => self::ID], ['filters' => ['version' => (string) HistoricalAggregateInspector::MAX_VERSIONS]]));
+    }
+
+    #[Test]
+    public function a_historical_target_at_the_head_itself_reaches_the_fold(): void
+    {
+        // the head vouches for its own version, so an empty read there is a truncated stream
+        $this->expectException(CorruptAggregateHistory::class);
+
+        $this->provider(heads: ['opsthing-'.self::ID => 3])
+            ->provide(new Get, ['category' => 'opsthing', 'id' => self::ID], ['filters' => ['version' => '3']]);
+    }
+
+    #[Test]
+    public function a_request_without_a_version_keeps_the_current_answer(): void
+    {
+        $answer = $this->provider(heads: ['opsthing-'.self::ID => 4], snapshotAt: 4)
+            ->provide(new Get, ['category' => 'opsthing', 'id' => self::ID], ['filters' => ['limit' => '2']]);
+
+        self::assertNotNull($answer);
+        self::assertSame(4, $answer->version);
+    }
+
     private function subjects(RecordingLog $recorder): string
     {
         return implode("\n", array_map(
@@ -252,12 +409,13 @@ final class AggregateStateProviderTest extends TestCase
         array $heads = [],
         ?string $personal = null,
         bool $probeThrows = false,
+        bool $finalProbeThrows = false,
         ?int $snapshotAt = null,
         ?StreamReader $reader = null,
         ?OpsAuditLog $audit = null,
     ): AggregateStateProvider {
         $log = $audit ?? new OpsAuditLog(new NullLogger);
-        $gate = new OpsActorGate($log, null, allowAnonymousReads: $anonymous);
+        $gate = new OpsActorGate($anonymous ? new OpsAuditLog(new NullLogger) : $log, null, allowAnonymousReads: $anonymous);
         $streamReader = $reader ?? $this->emptyReader();
 
         // @phpstan-ignore argument.type (the plain lane is a fixture FQCN; the catalog never loads it)
@@ -275,7 +433,7 @@ final class AggregateStateProviderTest extends TestCase
             $catalog,
             $this->manager($streamReader, $snapshotAt, $headStore),
             $headStore,
-            $this->guard($personal, $probeThrows),
+            $this->guard($personal, $probeThrows, $finalProbeThrows),
             $gate,
             $log,
         );
@@ -329,11 +487,20 @@ final class AggregateStateProviderTest extends TestCase
         return $store;
     }
 
-    private function guard(?string $personal, bool $throws): PersonalDataSnapshotGuard
+    private function guard(?string $personal, bool $throws, bool $finalProbeThrows = false): PersonalDataSnapshotGuard
     {
         $connection = $this->createStub(Connection::class);
 
-        if ($throws) {
+        if ($finalProbeThrows) {
+            $calls = 0;
+            $connection->method('fetchOne')->willReturnCallback(static function () use (&$calls): false {
+                if (++$calls > 1) {
+                    throw new class('the final probe is unreachable') extends RuntimeException implements DbalException {};
+                }
+
+                return false;
+            });
+        } elseif ($throws) {
             // the boundary type is an INTERFACE, so the double is one of its own, the idiom the
             // chronicler fixtures already use for a driver failure
             $connection->method('fetchOne')->willThrowException(new class('the probe is unreachable') extends RuntimeException implements DbalException {});
@@ -350,7 +517,7 @@ final class AggregateStateProviderTest extends TestCase
             $connection,
             $mapper,
             // @phpstan-ignore argument.type (a fixture FQCN; the guard never loads the marked class)
-            $throws || $personal !== null
+            $throws || $finalProbeThrows || $personal !== null
                 ? ['App\\CustomerNamed' => ['subject' => 'customer', 'keys' => ['name'], 'fallbacks' => []]]
                 : [],
         );

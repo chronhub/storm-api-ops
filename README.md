@@ -17,6 +17,25 @@ Splitting also makes the exposure a conscious opt-in: requiring this package mea
 accepts what the surface carries — hydrated event payloads (PII) and destructive mutation verbs —
 behind the app's ops firewall and Bureau-provided identity.
 
+## Reset before the first run
+
+`POST /_storm/projections/{name}/reset` can initialize and clear the output of a registered
+projection that has never run. When no checkpoint exists before or after the reset, the response
+is `204 No Content`; reset does not create a checkpoint. A reset of existing state returns the
+fresh projection resource with status 200. Unknown projection names still return 404, and live
+worker leases still refuse reset with 409. Identity and operator permission are checked first.
+
+## Stream names and category filters
+
+`GET /_storm/streams/{stream}/events` reads the exact named stream. A bare name such as
+`account` reads only events stored in `account`, not those in `account-123`. An absent bare
+stream returns an empty window even when qualified streams exist in that category.
+
+The directory query `GET /_storm/streams?category=ACCOUNT` folds the category to lowercase
+and lists both the bare stream and its qualified streams. Qualifiers remain case-sensitive:
+`account-ABC` and `account-abc` identify different streams. Resume with the exact stream name
+returned by the directory in `after`; event windows instead resume by global position.
+
 ## Wiring
 
 ```php
@@ -31,8 +50,8 @@ declare `/_storm/*`, but the bridge mounts them under `/api`, so the real path i
 `/api/_storm/*` — a pattern that forgets the prefix matches nothing and protects nothing. The
 mutation verbs (projection pause/resume/stop/retry/reset, saga cancel/redrive/pause/resume,
 the type-level freeze on `/saga-types/{workflowType}/pause|resume`, and the irreversible
-crypto-shred on `/privacy/{subject}/forget`) ride POST — one method-scoped line is the whole
-authorization gesture, the framework hard-codes no role:
+crypto-shred on `/privacy/{subject}/forget`) ride POST. Keep method-scoped firewall rules
+as a perimeter and wire the package permission policy below; the framework hard-codes no role:
 
 ```yaml
 access_control:
@@ -49,6 +68,27 @@ The two `^/(api/)?_storm` lines are deliberately broader than this package's sur
 own flat-imported controllers, `/_storm/health` and `/_storm/metrics`, fall under them too. That is
 the safe default for anything this README does not name, and it is why any sibling surface with its
 own trust level declares its rules first.
+
+The package also requires an explicit application policy for every gated read and mutation:
+
+```yaml
+services:
+    Storm\ApiOps\OpsAuthorization: '@App\Security\OperatorPermissions'
+```
+
+Implement `OpsAuthorization::canRead(Actor $actor, string $action, string $subject): bool` and
+`canMutate(...)` using your authenticated principal and permission system. The action and subject
+allow policies finer than a role; neither is a credential. Storm requires a Bureau identity first,
+then invokes the matching policy on each call. An absent policy or a `false` decision yields HTTP
+403 through `OperatorPermissionRefused`, before accessing the underlying data or applying a mutation.
+Identity and permission backend failures propagate; they never grant access. Role names, tenant
+scope and the match between the bound actor and the security principal belong to the application.
+
+Migration: existing applications that only wire `IdentityProvider` must add this policy before
+upgrading. The `describe` endpoint retains its compiled-wiring exception and must be protected by
+the application firewall; it never reads stored data. The two dev-only anonymous opt-ins below
+bypass both identity and permission checks independently. Each bypass and each explicit refusal
+emits a best-effort audit record; logging is not a guarantee of durable delivery.
 
 Beneath the firewall, the package carries its own defenses:
 
@@ -77,6 +117,12 @@ Beneath the firewall, the package carries its own defenses:
 
 - **every ops response leaves `no-store, private`**, whatever cache policy the app declared
   globally: raw payloads, snapshots and saga forensics never land in a shared cache.
+
+Aggregate state reads refuse streams carrying a declared personal event with HTTP 422.
+The privacy probe runs before replay and again after the response state is materialized,
+including historical reads. A personal append committed during replay therefore cannot leave
+as a successful state response. A failed probe fails the read; neither case emits a success
+audit record. This relies on the configured personal-event aliases and the retained event history.
 
 The following served reads emit a best-effort audit record:
 

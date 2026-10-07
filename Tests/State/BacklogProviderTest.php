@@ -6,6 +6,7 @@ namespace Storm\ApiOps\Tests\State;
 
 use ApiPlatform\Metadata\Get;
 use Doctrine\DBAL\Connection;
+use LogicException;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
@@ -74,7 +75,7 @@ final class BacklogProviderTest extends TestCase
     {
         // an operator acts on WHICH block is missing; two failures of one collector are still one
         // absent block, and a repeated name would read as two
-        $page = $this->provider([new ThrowingCollector, new ThrowingCollector])->provide(new Get);
+        $page = $this->provider([new ThrowingCollector, new ThrowingCollector(new LogicException('a second failure'))])->provide(new Get);
 
         self::assertSame(['ThrowingCollector'], $page->degraded);
     }
@@ -155,7 +156,7 @@ final class BacklogProviderTest extends TestCase
             // the statement bound is disabled so no connection is touched: this suite judges the
             // selection and the degraded naming, the exposition's own suite holds the bound
             new MetricsExposition($collectors, new PrometheusTextRenderer, $this->createStub(Connection::class), 0),
-            new OpsActorGate($audit, null, allowAnonymousReads: $anonymous),
+            new OpsActorGate($anonymous ? new OpsAuditLog(new NullLogger) : $audit, null, allowAnonymousReads: $anonymous),
         );
     }
 }

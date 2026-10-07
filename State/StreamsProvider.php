@@ -8,11 +8,13 @@ use ApiPlatform\Metadata\Operation;
 use ApiPlatform\State\ProviderInterface;
 use Override;
 use Storm\ApiOps\Error\AnonymousReadRefused;
+use Storm\ApiOps\Error\OperatorPermissionRefused;
 use Storm\ApiOps\OpsActorGate;
 use Storm\ApiOps\Resource\StreamResource;
 use Storm\Chronicler\Directory\StreamDirectory;
 use Storm\Chronicler\Directory\StreamHead;
 use Storm\Contracts\Chronicler\StorageFailure;
+use Throwable;
 
 /**
  * The stream directory as an ops collection: windowed, name-ordered, resumable by the last
@@ -34,6 +36,8 @@ final readonly class StreamsProvider implements ProviderInterface
      * @return list<StreamResource>
      *
      * @throws StorageFailure on a store failure of the browse
+     * @throws OperatorPermissionRefused when the application does not grant operator access
+     * @throws Throwable when an application identity or permission backend cannot answer
      * @throws AnonymousReadRefused when no actor is bound and the app did not opt out of the read gate
      */
     #[Override]

@@ -10,6 +10,7 @@ use Doctrine\DBAL\Exception;
 use JsonException;
 use Override;
 use Storm\ApiOps\Error\AnonymousReadRefused;
+use Storm\ApiOps\Error\OperatorPermissionRefused;
 use Storm\ApiOps\OpsActorGate;
 use Storm\ApiOps\Resource\SagaResource;
 use Storm\Saga\Store\Inspection\SagaInspectionGateway;
@@ -41,6 +42,8 @@ final readonly class SagasProvider implements ProviderInterface
      * @throws JsonException on a retries- or compensations-bag decode failure
      * @throws Exception on a raw DBAL read failure
      * @throws Throwable rethrown from the gateway's read-only transaction wrapper
+     * @throws OperatorPermissionRefused when the application does not grant operator access
+     * @throws Throwable when an application identity or permission backend cannot answer
      * @throws AnonymousReadRefused when no actor is bound and the app did not opt out of the read gate
      */
     #[Override]

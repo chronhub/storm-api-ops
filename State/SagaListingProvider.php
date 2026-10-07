@@ -10,12 +10,14 @@ use Doctrine\DBAL\Exception;
 use Override;
 use Storm\ApiOps\Error\AnonymousReadRefused;
 use Storm\ApiOps\Error\MalformedQueryParameter;
+use Storm\ApiOps\Error\OperatorPermissionRefused;
 use Storm\ApiOps\OpsActorGate;
 use Storm\ApiOps\Resource\SagaListingPageResource;
 use Storm\ApiOps\Resource\SagaListingResource;
 use Storm\Saga\Store\Inspection\SagaInspectionGateway;
 use Storm\Saga\Store\WorkflowStatus;
 use Storm\Support\Console\PositiveIntOption;
+use Throwable;
 
 use function array_map;
 use function get_debug_type;
@@ -51,6 +53,8 @@ final readonly class SagaListingProvider implements ProviderInterface
      *                                 integer, a 422; reading either loosely serves an answer the
      *                                 caller never asked for
      * @throws Exception on a raw DBAL read failure
+     * @throws OperatorPermissionRefused when the application does not grant operator access
+     * @throws Throwable when an application identity or permission backend cannot answer
      * @throws AnonymousReadRefused when no actor is bound and the app did not opt out of the read gate
      */
     #[Override]

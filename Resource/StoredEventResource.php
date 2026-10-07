@@ -9,8 +9,6 @@ use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\QueryParameter;
 use Storm\ApiOps\Error\AnonymousReadRefused;
 use Storm\ApiOps\Error\MalformedQueryParameter;
-use Storm\ApiOps\State\CorrelationEventsProvider;
-use Storm\ApiOps\State\CorrelationIdSet;
 use Storm\ApiOps\State\PageWindow;
 use Storm\ApiOps\State\StreamEventsProvider;
 
@@ -25,11 +23,9 @@ use Storm\ApiOps\State\StreamEventsProvider;
  * stored bytes, readable even when an alias or an upcast chain is broken, is deliberately NOT
  * this endpoint; that broken row surfaces as a 500 an operator must see.
  *
- * Three windows over the same read, the HTTP twin of `storm:events:inspect`: a stream's events by
- * name, an aggregate's history by category and id as its qualified stream, and the events carrying
- * a set of correlation ids. The first two are resumable by global position through `after`, the
- * store's append order; the correlation window has no cursor, its filter carrying a set of ids and
- * nothing else, so the server cap is its bound.
+ * Stream and aggregate windows resume by global position through `after`, the store's append
+ * order. The correlation window wraps these rows in {@see CorrelationEventsPageResource} with
+ * an explicit truncation flag.
  */
 #[ApiResource(
     shortName: 'StormStoredEvent',
@@ -62,15 +58,7 @@ use Storm\ApiOps\State\StreamEventsProvider;
                 'limit' => new QueryParameter(schema: ['type' => 'integer', 'minimum' => 1, 'maximum' => PageWindow::MAX_LIMIT], description: 'Page size, capped server-side.'),
             ],
         ),
-        new GetCollection(
-            uriTemplate: '/_storm/correlations/events',
-            paginationEnabled: false,
-            provider: CorrelationEventsProvider::class,
-            parameters: [
-                'ids' => new QueryParameter(schema: ['type' => 'string'], description: 'One to '.CorrelationIdSet::MAX_IDS.' `__correlation_id`s, comma-separated; a lineage is resolved elsewhere and passed whole. A wider set is refused rather than cut, this envelope carrying no way to report a narrowing.'),
-                'limit' => new QueryParameter(schema: ['type' => 'integer', 'minimum' => 1, 'maximum' => PageWindow::MAX_LIMIT], description: 'Page size, capped server-side.'),
-            ],
-        ),
+
     ],
     // the ops surface is operator tooling, discoverable through describe, never advertised in the
     // app's public API docs: a firewalled /_storm with public docs would still map every cancel,

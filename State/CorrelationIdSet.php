@@ -52,7 +52,8 @@ final readonly class CorrelationIdSet
 
         // filtered on emptiness, never on truthiness: a bare `array_filter` also drops the id "0",
         // and a set silently one id short is served as the complete trace
-        return array_values(array_filter($parts, static fn (string $part): bool => $part !== ''));
+        return array_filter($parts, static fn (string $part): bool => $part !== '')
+            |> array_values(...);
     }
 
     /**

@@ -13,7 +13,8 @@ use RuntimeException;
  * absent snapshot would make the fold as long as the stream. The head bounds the WORST fold, so the
  * refusal is a generous approximation, never a claim about the actual snapshot's freshness; the
  * refusal points at the history the fold is made of, no `storm:*` verb offering
- * an aggregate fold.
+ * an aggregate fold. A historical fold never starts from a snapshot, so its ceiling applies to the
+ * requested version, which is exactly its replay length.
  *
  * PERSONAL DATA IN STATE: the stream carries a `#[Personal]` event, and a fold sees decrypted values.
  * Serving `toSnapshot()` here would publish the subject's personal state in clear over HTTP, which is
@@ -31,6 +32,17 @@ final class AggregateFoldRefused extends RuntimeException
             $category,
             $id,
             $headVersion,
+            $ceiling,
+        ));
+    }
+
+    public static function versionPastCeiling(string $category, string $id, int $version, int $ceiling): self
+    {
+        return new self(sprintf(
+            'Refusing to fold aggregate "%s-%s" over HTTP at version %d: a historical fold replays from version 1 without a snapshot, and %d versions is the most an HTTP GET may replay. Read its history with storm:events:inspect --stream.',
+            $category,
+            $id,
+            $version,
             $ceiling,
         ));
     }

@@ -9,6 +9,7 @@ use Doctrine\DBAL\Connection;
 use LogicException;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\NullLogger;
 use RuntimeException;
 use stdClass;
 use Storm\ApiOps\Error\AnonymousMutationRefused;
@@ -197,7 +198,7 @@ final class SagaCancelProcessorTest extends TestCase
             $engine,
             new SagaInspectionGateway($this->createStub(Connection::class), new WorkflowRegistry),
             $audit,
-            new OpsActorGate($audit, null, allowAnonymous: true),
+            new OpsActorGate(new OpsAuditLog(new NullLogger), null, allowAnonymous: true),
         );
 
         try {
@@ -229,7 +230,7 @@ final class SagaCancelProcessorTest extends TestCase
             $engine,
             new SagaInspectionGateway($connection, new WorkflowRegistry),
             $audit,
-            new OpsActorGate($audit, null, allowAnonymous: $allowAnonymous),
+            new OpsActorGate($allowAnonymous ? new OpsAuditLog(new NullLogger) : $audit, null, allowAnonymous: $allowAnonymous),
         );
     }
 

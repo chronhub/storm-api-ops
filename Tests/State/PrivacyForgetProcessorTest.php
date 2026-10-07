@@ -8,6 +8,7 @@ use ApiPlatform\Metadata\Post;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\NullLogger;
 use RuntimeException;
 use Storm\ApiOps\Error\AnonymousMutationRefused;
 use Storm\ApiOps\OpsActorGate;
@@ -211,7 +212,7 @@ final class PrivacyForgetProcessorTest extends TestCase
         return new PrivacyForgetProcessor(
             new SubjectForgetter($keys),
             $log,
-            new OpsActorGate($log, null, allowAnonymous: $anonymous),
+            new OpsActorGate($anonymous ? new OpsAuditLog(new NullLogger) : $log, null, allowAnonymous: $anonymous),
         );
     }
 }

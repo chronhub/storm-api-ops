@@ -11,6 +11,7 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Psr\EventDispatcher\EventDispatcherInterface;
+use Psr\Log\NullLogger;
 use RuntimeException;
 use stdClass;
 use Storm\ApiOps\Error\AnonymousMutationRefused;
@@ -357,7 +358,7 @@ final class SagaPauseProcessorTest extends TestCase
             $instances,
             new SagaInspectionGateway($connection, new WorkflowRegistry),
             $audit,
-            new OpsActorGate($audit, null, allowAnonymous: $allowAnonymous),
+            new OpsActorGate($allowAnonymous ? new OpsAuditLog(new NullLogger) : $audit, null, allowAnonymous: $allowAnonymous),
             $events,
         );
     }

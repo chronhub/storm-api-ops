@@ -9,6 +9,7 @@ use ApiPlatform\State\ProcessorInterface;
 use LogicException;
 use Override;
 use Storm\ApiOps\Error\AnonymousMutationRefused;
+use Storm\ApiOps\Error\OperatorPermissionRefused;
 use Storm\ApiOps\Error\SagaCancelRefused;
 use Storm\ApiOps\Error\SagaCommandNotFound;
 use Storm\ApiOps\OpsActorGate;
@@ -51,6 +52,8 @@ final readonly class SagaCancelProcessor implements ProcessorInterface
     /**
      * {@inheritDoc}
      *
+     * @throws OperatorPermissionRefused when the application does not grant operator access
+     * @throws Throwable when an application identity or permission backend cannot answer
      * @throws AnonymousMutationRefused when no actor is bound and the app did not opt out, a 403
      * @throws WorkflowNotFound when the workflow type is not registered, a 404 by declaration
      * @throws SagaCancelRefused when the engine declines the cancel, a 409 naming the cause a fresh read establishes

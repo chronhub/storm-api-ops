@@ -11,12 +11,14 @@ use JsonException;
 use Override;
 use Storm\ApiOps\Error\AnonymousReadRefused;
 use Storm\ApiOps\Error\MalformedQueryParameter;
+use Storm\ApiOps\Error\OperatorPermissionRefused;
 use Storm\ApiOps\OpsActorGate;
 use Storm\ApiOps\Resource\SagaHistoryRecordResource;
 use Storm\ApiOps\Resource\SagaHistoryResource;
 use Storm\Support\Console\PositiveIntOption;
 use Storm\Telemetry\History\GenerationOutOfRange;
 use Storm\Telemetry\History\WorkflowHistoryStore;
+use Throwable;
 
 use function array_map;
 use function get_debug_type;
@@ -51,6 +53,8 @@ final readonly class SagaHistoryProvider implements ProviderInterface
      *                              the store's own refusal, a 422
      * @throws JsonException when a stored payload is not decodable jsonb
      * @throws Exception on a raw DBAL read failure
+     * @throws OperatorPermissionRefused when the application does not grant operator access
+     * @throws Throwable when an application identity or permission backend cannot answer
      * @throws AnonymousReadRefused when no actor is bound and the app did not opt out of the read gate
      */
     #[Override]

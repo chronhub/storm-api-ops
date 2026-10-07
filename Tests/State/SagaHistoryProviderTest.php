@@ -230,7 +230,7 @@ final class SagaHistoryProviderTest extends TestCase
 
         return new SagaHistoryProvider(
             new WorkflowHistoryStore($connection),
-            new OpsActorGate($audit, null, allowAnonymousReads: $anonymous),
+            new OpsActorGate($anonymous ? new OpsAuditLog(new NullLogger) : $audit, null, allowAnonymousReads: $anonymous),
         );
     }
 }

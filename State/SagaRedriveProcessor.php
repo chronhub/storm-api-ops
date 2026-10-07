@@ -9,6 +9,7 @@ use ApiPlatform\State\ProcessorInterface;
 use LogicException;
 use Override;
 use Storm\ApiOps\Error\AnonymousMutationRefused;
+use Storm\ApiOps\Error\OperatorPermissionRefused;
 use Storm\ApiOps\Error\SagaCommandNotFound;
 use Storm\ApiOps\Error\SagaRedriveRefused;
 use Storm\ApiOps\OpsActorGate;
@@ -53,6 +54,8 @@ final readonly class SagaRedriveProcessor implements ProcessorInterface
     /**
      * {@inheritDoc}
      *
+     * @throws OperatorPermissionRefused when the application does not grant operator access
+     * @throws Throwable when an application identity or permission backend cannot answer
      * @throws AnonymousMutationRefused when no actor is bound and the app did not opt out, a 403
      * @throws SagaCommandNotFound when no such command exists, or the instance vanished, a 404 by declaration
      * @throws SagaRedriveRefused when a guard declined, a 409 naming which one

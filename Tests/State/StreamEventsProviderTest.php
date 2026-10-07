@@ -62,7 +62,7 @@ final class StreamEventsProviderTest extends TestCase
     }
 
     #[Test]
-    public function a_stream_path_scopes_the_read_to_that_whole_category(): void
+    public function a_bare_stream_path_scopes_the_read_to_that_exact_stream(): void
     {
         // the refusal paths above prove what does NOT reach the reader; this proves what does. The
         // scope is private to the filter, so it is observed where it lands, in the predicate the
@@ -70,7 +70,8 @@ final class StreamEventsProviderTest extends TestCase
         $qb = $this->captureFilter(['stream' => 'account']);
 
         self::assertStringContainsString('e.category = :feedCategory', $qb->getSQL());
-        self::assertStringNotContainsString('e.stream', $qb->getSQL());
+        self::assertStringContainsString('e.stream = :feedStream', $qb->getSQL());
+        self::assertSame('account', $qb->getParameter('feedStream'));
         self::assertSame('account', $qb->getParameter('feedCategory'));
     }
 
@@ -247,7 +248,7 @@ final class StreamEventsProviderTest extends TestCase
 
         $log = new RecordingLog;
         $audit = new OpsAuditLog($log);
-        $page = new StreamEventsProvider($reader, new OpsActorGate($audit, null, allowAnonymousReads: true), $audit)
+        $page = new StreamEventsProvider($reader, new OpsActorGate(new OpsAuditLog(new NullLogger), null, allowAnonymousReads: true), $audit)
             ->provide(new Get, ['stream' => 'account']);
 
         // the record's stored stream rides through; its absence must never read as a wrong stream
@@ -264,6 +265,6 @@ final class StreamEventsProviderTest extends TestCase
         // whose own suite holds the refusal
         $audit = new OpsAuditLog(new NullLogger);
 
-        return new StreamEventsProvider($reader, new OpsActorGate($audit, null, allowAnonymous: false, allowAnonymousReads: true), $audit); // @phpstan-ignore argument.type (the anonymous reader double)
+        return new StreamEventsProvider($reader, new OpsActorGate(new OpsAuditLog(new NullLogger), null, allowAnonymous: false, allowAnonymousReads: true), $audit); // @phpstan-ignore argument.type (the anonymous reader double)
     }
 }

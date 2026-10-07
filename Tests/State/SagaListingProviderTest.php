@@ -14,6 +14,7 @@ use Storm\ApiOps\Error\AnonymousReadRefused;
 use Storm\ApiOps\Error\MalformedQueryParameter;
 use Storm\ApiOps\OpsActorGate;
 use Storm\ApiOps\OpsAuditLog;
+use Storm\ApiOps\Resource\SagaListingResource;
 use Storm\ApiOps\State\SagaListingProvider;
 use Storm\Saga\Build\WorkflowRegistry;
 use Storm\Saga\Store\Inspection\SagaInspectionGateway;
@@ -236,6 +237,7 @@ final class SagaListingProviderTest extends TestCase
         $page = $this->provider($this->connection([$this->row('c-1')]))->provide(new GetCollection);
 
         self::assertCount(1, $page->sagas);
+        self::assertInstanceOf(SagaListingResource::class, $page->sagas[0]);
         self::assertSame('c-1', $page->sagas[0]->correlationId);
         self::assertSame('transfer', $page->sagas[0]->workflowType);
     }

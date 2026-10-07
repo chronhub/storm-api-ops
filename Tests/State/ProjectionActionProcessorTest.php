@@ -11,12 +11,14 @@ use LogicException;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\NullLogger;
 use RuntimeException;
 use Storm\ApiOps\Error\AnonymousMutationRefused;
 use Storm\ApiOps\Error\ProjectionNotFound;
 use Storm\ApiOps\Error\ProjectionTransitionRefused;
 use Storm\ApiOps\OpsActorGate;
 use Storm\ApiOps\OpsAuditLog;
+use Storm\ApiOps\Resource\ProjectionResource;
 use Storm\ApiOps\State\ProjectionActionProcessor;
 use Storm\ApiOps\State\ProjectionResourceFactory;
 use Storm\ApiOps\Tests\Fixture\RecordingLog;
@@ -195,6 +197,48 @@ final class ProjectionActionProcessorTest extends TestCase
         $this->assertCount(1, $log->applied());
     }
 
+    #[Test]
+    public function a_verb_on_an_unknown_projection_is_refused_as_not_found(): void
+    {
+        // only a reset may address a name with no row, since it also clears output a row never
+        // recorded; every other verb has nothing to act on and says so, audited, before any write
+        $store = $this->createMock(ProjectionLifecycleStore::class);
+        $store->method('findRow')->willReturn(null);
+        $store->expects($this->never())->method('pause');
+        $log = new RecordingLog;
+
+        try {
+            $this->processor($store, $log)->process(null, $this->operation('pause'), ['name' => 'account_balance']);
+            self::fail('a pause on an unknown projection must surface as ProjectionNotFound');
+        } catch (ProjectionNotFound $e) {
+            $this->assertSame('No projection "account_balance".', $e->getMessage());
+        }
+
+        $this->assertSame([], $log->applied());
+        $this->assertSame('refused: no such projection', $log->records[0]['context']['outcome']);
+    }
+
+    #[Test]
+    public function an_applied_verb_answers_the_row_it_reads_back(): void
+    {
+        // the answer is the read-back, never a bare 204: only a reset of a name that never ran has
+        // no row to show on either side of the verb
+        $store = $this->createStub(ProjectionLifecycleStore::class);
+        $reads = 0;
+        $store->method('findRow')->willReturnCallback(function () use (&$reads): ProjectionRow {
+            return ++$reads === 1 ? $this->row() : $this->rowWithStatus(ProjectionStatus::Paused);
+        });
+        $store->method('pause')->willReturn(true);
+
+        $answer = $this->processor($store, new RecordingLog)->process(null, $this->operation('pause'), ['name' => 'account_balance']);
+
+        $this->assertInstanceOf(ProjectionResource::class, $answer);
+        $this->assertSame('account_balance', $answer->name);
+        $this->assertSame(ProjectionStatus::Paused->value, $answer->status);
+        // no lease holder, so no liveness to ask the store about: null, never a lease read as dead
+        $this->assertNull($answer->leaseLive);
+    }
+
     private function processor(ProjectionLifecycleStore $store, RecordingLog $log, bool $allowAnonymous = true): ProjectionActionProcessor
     {
         $audit = new OpsAuditLog($log);
@@ -207,7 +251,7 @@ final class ProjectionActionProcessorTest extends TestCase
         $lane = new ProjectionLane($this->createStub(ProjectionStore::class), $this->createStub(Connection::class));
         $management = new ProjectionManagement(new ProjectionRegistry, new ProjectionLanes($lane, $lane), new EventLinkWriter);
 
-        return new ProjectionActionProcessor($store, $management, $factory, $audit, new OpsActorGate($audit, null, allowAnonymous: $allowAnonymous));
+        return new ProjectionActionProcessor($store, $management, $factory, $audit, new OpsActorGate($allowAnonymous ? new OpsAuditLog(new NullLogger) : $audit, null, allowAnonymous: $allowAnonymous));
     }
 
     private function operation(string $action): Post

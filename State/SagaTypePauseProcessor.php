@@ -9,6 +9,7 @@ use ApiPlatform\State\ProcessorInterface;
 use LogicException;
 use Override;
 use Storm\ApiOps\Error\AnonymousMutationRefused;
+use Storm\ApiOps\Error\OperatorPermissionRefused;
 use Storm\ApiOps\Error\SagaPauseRefused;
 use Storm\ApiOps\Error\UnknownWorkflowType;
 use Storm\ApiOps\OpsActorGate;
@@ -44,6 +45,8 @@ final readonly class SagaTypePauseProcessor implements ProcessorInterface
     /**
      * {@inheritDoc}
      *
+     * @throws OperatorPermissionRefused when the application does not grant operator access
+     * @throws Throwable when an application identity or permission backend cannot answer
      * @throws AnonymousMutationRefused when no actor is bound and the app did not opt out, a 403
      * @throws UnknownWorkflowType when freezing a type no registry knows, a 404
      * @throws SagaPauseRefused when resuming a type that was not frozen, a 409

@@ -12,30 +12,28 @@ use Psr\Log\NullLogger;
 use RuntimeException;
 use Storm\ApiOps\Error\AnonymousMutationRefused;
 use Storm\ApiOps\Error\AnonymousReadRefused;
+use Storm\ApiOps\Error\OperatorPermissionRefused;
 use Storm\ApiOps\OpsActorGate;
 use Storm\ApiOps\OpsAuditLog;
+use Storm\ApiOps\OpsAuthorization;
 use Storm\Bureau\Actor;
 use Storm\Bureau\IdentityProvider;
 use Stringable;
 
 /**
- * The gate is actor PRESENCE, and the tests below say where that stops.
- *
- * It refuses a request with no owned identity, whatever the firewall did or forgot, because the
- * package's own claim is that the audit trail names who acted; a destructive action without an actor
- * is a contradiction and a hydrated payload served to nobody is a leak with no trace.
- *
- * It does NOT authorize, and that boundary is asserted rather than left to prose, because the gate is
- * easy to mistake for an authorization layer and the mistake is silent. Roles, zones and the
- * `access_control` map are the app's layer; duplicating them here would put the same decision in two
- * vocabularies that must then agree forever. The `Actor` this gate reads carries an id and a type and
- * no role at all, so checking one would mean either extending that contract for every implementor or
- * pulling `symfony/security` into a module built without it.
- *
- * @see \Storm\Bureau\Actor what the gate can see of an actor
+ * Identity and application permission are independent requirements of the ops boundary.
  */
 final class OpsActorGateTest extends TestCase
 {
+    #[Test]
+    public function an_authenticated_actor_without_ops_permission_is_refused(): void
+    {
+        $gate = new OpsActorGate(new OpsAuditLog(new NullLogger), $this->providerReturning(new Actor('customer-1', 'customer')));
+        $this->expectException(\Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException::class);
+
+        $gate->assertOwnedIdentity('pause', 'probe_catalog');
+    }
+
     #[Test]
     public function no_identity_substrate_at_all_refuses_and_audits_the_refusal(): void
     {
@@ -80,6 +78,7 @@ final class OpsActorGateTest extends TestCase
         $gate = new OpsActorGate(
             new OpsAuditLog(new NullLogger),
             $this->providerReturning(new Actor('ops-1', 'user')),
+            authorization: $this->permitted(),
         );
 
         $gate->assertOwnedIdentity('pause', 'probe_catalog');
@@ -88,21 +87,12 @@ final class OpsActorGateTest extends TestCase
     }
 
     #[Test]
-    public function an_actor_of_any_type_passes_because_this_gate_does_not_authorize(): void
+    public function an_actor_type_never_substitutes_for_operator_permission(): void
     {
-        // The boundary, stated as a test. A customer, a device, a batch job: the gate asks whether the
-        // request has an owner, never whether that owner should be here. Reading this as a refusal of
-        // non-operators is the misconception the test exists to close, and the sibling assertion above
-        // uses an ops-looking id, which is exactly what makes the misreading easy.
-        $gate = new OpsActorGate(
-            new OpsAuditLog(new NullLogger),
-            $this->providerReturning(new Actor('cus-77', 'customer')),
-        );
+        $gate = new OpsActorGate(new OpsAuditLog(new NullLogger), $this->providerReturning(new Actor('ops-1', 'ops')));
+        $this->expectException(OperatorPermissionRefused::class);
 
-        $gate->assertOwnedIdentity('cancel', 'transfer/c-1');
         $gate->assertOwnedIdentityForRead('aggregate.read', 'account-1');
-
-        $this->expectNotToPerformAssertions();
     }
 
     #[Test]
@@ -152,6 +142,7 @@ final class OpsActorGateTest extends TestCase
         $gate = new OpsActorGate(
             new OpsAuditLog(new NullLogger),
             $this->providerReturning(new Actor('ops-1', 'user')),
+            authorization: $this->permitted(),
         );
 
         $gate->assertOwnedIdentityForRead('events.read', 'account-1');
@@ -213,6 +204,15 @@ final class OpsActorGateTest extends TestCase
         $this->expectExceptionObject($backendDown);
 
         $gate->assertOwnedIdentity('cancel', 'transfer/c-1');
+    }
+
+    private function permitted(): OpsAuthorization
+    {
+        $policy = $this->createStub(OpsAuthorization::class);
+        $policy->method('canRead')->willReturn(true);
+        $policy->method('canMutate')->willReturn(true);
+
+        return $policy;
     }
 
     private function providerReturning(?Actor $actor): IdentityProvider

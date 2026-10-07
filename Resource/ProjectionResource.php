@@ -35,12 +35,12 @@ use Storm\Projector\Exception\UnsupportedProjection;
  * nothing like the streams' directory.
  *
  * The status controls ride the same resource as POST verbs, the destructive actions this
- * package's opt-in is about. Authorization stays app configuration, the ops-zone showcase pattern:
- * a method-scoped access_control line matching `^/(api/)?_storm` on POST to `ROLE_ADMIN` is the
- * whole gesture, and the framework hard-codes no role. The `(api/)?` matters: the bridge mounts
- * these resources under `/api`, so the real path is `/api/_storm/*`. Beneath the firewall,
- * {@see OpsActorGate} refuses an anonymous mutation outright, a 403. A refused transition
+ * package's opt-in is about. The app wires `OpsAuthorization` and keeps method-scoped
+ * `access_control` rules around the mounted ops zone. The framework hard-codes no role.
+ * Beneath the firewall, {@see OpsActorGate} requires both an identity and an explicit permission;
+ * either refusal is a 403. A refused transition
  * answers 409 with the state machine's own words; a success answers the projection's fresh truth.
+ * Reset of a registered projection without a checkpoint answers 204 with no representation.
  */
 #[ApiResource(
     shortName: 'StormProjection',

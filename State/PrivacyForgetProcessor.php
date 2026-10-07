@@ -8,6 +8,7 @@ use ApiPlatform\Metadata\Operation;
 use ApiPlatform\State\ProcessorInterface;
 use Override;
 use Storm\ApiOps\Error\AnonymousMutationRefused;
+use Storm\ApiOps\Error\OperatorPermissionRefused;
 use Storm\ApiOps\OpsActorGate;
 use Storm\ApiOps\OpsAuditLog;
 use Storm\ApiOps\Resource\ForgetSubjectInput;
@@ -40,6 +41,8 @@ final readonly class PrivacyForgetProcessor implements ProcessorInterface
     /**
      * {@inheritDoc}
      *
+     * @throws OperatorPermissionRefused when the application does not grant operator access
+     * @throws Throwable when an application identity or permission backend cannot answer
      * @throws AnonymousMutationRefused when no actor is bound and the app did not opt out, a 403
      * @throws UnprocessableEntityHttpException when the subject path segment is blank, a 422
      * @throws ForgetIncomplete when a volunteer's hook failed; the key IS destroyed, re-run to

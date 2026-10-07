@@ -42,8 +42,8 @@ final class StormApiOpsBundle extends AbstractBundle
     /**
      * {@inheritDoc}
      *
-     * The one knob is a fail-closed default: mutations refuse an anonymous caller unless the app
-     * opts out in so many words, a dev/demo gesture, never a production posture.
+     * The two dev opt-ins bypass identity and permission independently for reads and mutations.
+     * Both default to refusing anonymous access; authenticated callers need `OpsAuthorization`.
      */
     #[Override]
     public function configure(DefinitionConfigurator $definition): void
@@ -52,11 +52,11 @@ final class StormApiOpsBundle extends AbstractBundle
             ->children()
             ->booleanNode('allow_anonymous_mutations')
             ->defaultFalse()
-            ->info('Let the destructive POST verbs through without a Bureau-bound actor. The default refuses with a 403: the audit trail names who acted, and an anonymous mutation would blank that line.')
+            ->info('Dev only: bypass identity and operator permission checks for destructive POST verbs. The default refuses with a 403: the audit trail names who acted, and an anonymous mutation would blank that line.')
             ->end()
             ->booleanNode('allow_anonymous_reads')
             ->defaultFalse()
-            ->info('Let the GET surface through without a Bureau-bound actor; describe stays open either way. The default refuses with a 403: the reads serve hydrated event payloads, and a forgotten firewall pattern must fail as loud here as on the mutations.')
+            ->info('Dev only: bypass identity and operator permission checks for the GET surface; describe stays open either way. The default refuses with a 403: the reads serve hydrated event payloads, and a forgotten firewall pattern must fail as loud here as on the mutations.')
             ->end()
             ->end();
     }
