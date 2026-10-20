@@ -11,6 +11,7 @@ use ReflectionMethod;
 use Storm\ApiOps\Resource\SagaResource;
 use Storm\Saga\Store\Inspection\ChildSnapshot;
 use Storm\Saga\Store\Inspection\OutboxSnapshot;
+use Storm\Saga\Store\Inspection\ParkSnapshot;
 use Storm\Saga\Store\Inspection\SagaSnapshot;
 use Storm\Saga\Store\Inspection\TimerSnapshot;
 use Storm\Saga\Workflow\CompensationRecord;
@@ -34,21 +35,21 @@ final class SagaResourceTest extends TestCase
         );
 
         self::assertFalse($resource->typePaused);
+        self::assertNull($resource->parked);
     }
 
     #[Test]
     public function the_four_collections_cross_as_their_element_s_own_to_array(): void
     {
         // the wire contract of the ops surface: compensations, timers, outbox and children each
-        // cross FLATTENED through an explicit allowlist. Today every snapshot key is admitted, so
-        // the mapped record equals toArray(); the sibling key-set test below is what keeps that
-        // equality honest, turning an upstream addition into a failing build instead of a silent
-        // new public wire field.
+        // cross flattened through an explicit allowlist. Every snapshot key is admitted, so the
+        // mapped record equals toArray(); the sibling key-set test below keeps that equality
+        // honest, turning an upstream addition into a failing build instead of a silent new public
+        // wire field.
         //
-        // Every collection holds ONE element on purpose: array_map over an empty array is
-        // indistinguishable from the array itself, which is exactly what left this unpinned. And
-        // the assertion compares against toArray() rather than merely checking arrayness, which
-        // the property type already guarantees and would assert nothing.
+        // Every collection holds one element: array_map over an empty array is indistinguishable
+        // from the array itself. And the assertion compares against toArray() rather than merely
+        // checking arrayness, which the property type already guarantees and would assert nothing.
         $snapshot = $this->snapshot();
         $resource = SagaResource::fromSnapshot($snapshot);
 
@@ -56,6 +57,7 @@ final class SagaResourceTest extends TestCase
         $this->assertSame($snapshot->outbox[0]->toArray(), $resource->outbox[0]);
         $this->assertSame($snapshot->compensations[0]->toArray(), $resource->compensations[0]);
         $this->assertSame($snapshot->children[0]->toArray(), $resource->children[0]);
+        $this->assertSame($snapshot->parked?->toArray(), $resource->parked);
     }
 
     #[Test]
@@ -63,7 +65,7 @@ final class SagaResourceTest extends TestCase
     public function an_upstream_snapshot_addition_must_be_admitted_into_the_allowlist(): void
     {
         // the guard M-shaped pass-throughs cannot give: the snapshots belong to the Saga module,
-        // and OutboxSnapshot already publishes last_error, app-authored text, so a key IT adds
+        // and OutboxSnapshot already publishes last_error, app-authored text, so a key it adds
         // must be a conscious ApiOps admission; this comparison fails the build the day upstream
         // adds one, which is the decision point
         $snapshot = $this->snapshot();
@@ -72,13 +74,14 @@ final class SagaResourceTest extends TestCase
         $this->assertSame(SagaResource::TIMER_KEYS, array_keys($snapshot->timers[0]->toArray()));
         $this->assertSame(SagaResource::OUTBOX_KEYS, array_keys($snapshot->outbox[0]->toArray()));
         $this->assertSame(SagaResource::CHILD_KEYS, array_keys($snapshot->children[0]->toArray()));
+        $this->assertSame(SagaResource::PARKED_KEYS, array_keys($snapshot->parked?->toArray() ?? []));
     }
 
     #[Test]
     public function the_top_level_carries_the_console_snapshot_field_for_field(): void
     {
         // the parity both sides claim: SagaSnapshot states that the console --json and the ops
-        // HTTP surface serve THIS, and the sibling history endpoint asks the caller for the very
+        // HTTP surface serve this, and the sibling history endpoint asks the caller for the very
         // generation this view must therefore expose; updated_at is the first question a halted
         // saga raises, and exposed is the module's designed window onto app state
         $resource = SagaResource::fromSnapshot($this->snapshot());
@@ -97,7 +100,7 @@ final class SagaResourceTest extends TestCase
     #[Group('adversarial')]
     public function the_allowlist_actually_drops_what_it_does_not_admit(): void
     {
-        // no real snapshot can carry a foreign key today, which is exactly what would let a
+        // no real snapshot carries a foreign key yet, which is exactly what would let a
         // removed filter pass every other test; the filter is exercised directly so the guard
         // stays a guard rather than a decoration
         $picked = new ReflectionMethod(SagaResource::class, 'pick')->invoke(null, ['status' => 'pending', 'smuggled' => 'app-secret'], ['status']);
@@ -126,6 +129,7 @@ final class SagaResourceTest extends TestCase
             children: [new ChildSnapshot('refund', 'c-child', 'running')],
             stateVersion: 4,
             exposed: ['balance' => 42],
+            parked: new ParkSnapshot('await', 'test.charge_settled', 'cause-9', false),
         );
     }
 }

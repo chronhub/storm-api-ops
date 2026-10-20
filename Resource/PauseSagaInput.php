@@ -7,9 +7,9 @@ namespace Storm\ApiOps\Resource;
 use Symfony\Component\Validator\Constraints as Assert;
 
 /**
- * The instance freeze's body, the console contract verbatim: the workflow type names WHICH saga
- * under the correlation, and the reason carries the freeze's attributability, an operator decision
- * an inspection must be able to explain.
+ * The instance freeze's body, the console contract verbatim: the workflow type names which saga under
+ * the correlation, and the reason carries the freeze's attributability, an operator decision an
+ * inspection must be able to explain.
  */
 final readonly class PauseSagaInput
 {

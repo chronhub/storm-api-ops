@@ -9,7 +9,7 @@ use PHPUnit\Framework\TestCase;
 use Storm\ApiOps\Error\AggregateFoldRefused;
 
 /**
- * The one refusal the aggregate read can answer, and the operator meets it as a 422 body with no
+ * The ceiling refusal of the aggregate read, which the operator meets as a 422 body with no
  * other context. So the sentence carries the whole next move: which aggregate, the head that
  * tripped the ceiling, the ceiling that stopped it, and the console as the unbounded path. A body
  * that only says "refused" sends an operator hunting a bug in the endpoint instead of reaching for
@@ -28,8 +28,8 @@ final class AggregateFoldRefusedTest extends TestCase
         // as a sentence, a plausible one that inverts the fact
         $this->assertStringContainsString('its stream head is at version 250000', $message);
         $this->assertStringContainsString('past the 100000 ceiling', $message);
-        // a refusal with no way through is a dead end, and the way it named for months did not exist:
-        // no `storm:*` verb folds an aggregate, so it points at the history the fold is made of
+        // a refusal with no way through is a dead end: no `storm:*` verb folds an aggregate, so it
+        // points at the history the fold is made of
         $this->assertStringContainsString('storm:events:inspect --stream', $message);
     }
 }

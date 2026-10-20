@@ -28,12 +28,12 @@ final readonly class SagaListingResource
         public ?string $updatedAt,
         public ?string $waivedAt,
         public ?string $parentCorrelationId,
-        /** The operator freeze stamp; null when executable. A paused saga must SAY so in a listing. */
+        /** The operator freeze stamp; null when executable. A paused saga must say so in a listing. */
         public ?string $pausedAt = null,
         /**
-         * Whether the whole workflow TYPE is frozen, which no instance stamp carries: that freeze
+         * Whether the whole workflow type is frozen, which no instance stamp carries: that freeze
          * lives in `workflow_pauses` alone and gates births as well as steps. A saga held by it
-         * must SAY so, exactly like one held by its own stamp.
+         * must say so, exactly like one held by its own stamp.
          */
         public bool $typePaused = false,
         public ?string $globalDeadlineConsumedAt = null,

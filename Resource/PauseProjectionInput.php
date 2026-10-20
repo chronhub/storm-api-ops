@@ -11,11 +11,11 @@ use Symfony\Component\Validator\Constraints as Assert;
  * The pause action's optional body: a timed pause resumes itself after `forSeconds`, the
  * projector's own timed-pause semantics; omitted or null, the pause is indefinite until `resume`.
  *
- * The bounds are the contract, refused as a 422 before the store ever sees the value. Zero and
- * negatives are lies: the row would say `paused` with a horizon already passed, resumed on the
- * next runner tick, and null already means indefinite, one way to say it. The ceiling is an
- * operational month: an operator pausing longer than 30 days wants `stop`, and an unbounded
- * value would only surface later as a PostgreSQL interval error instead of a clear refusal.
+ * The bounds are the contract, refused as a 422 before the store ever sees the value. Zero and negative
+ * values would make the row say `paused` with a horizon already passed, resumed on the next runner
+ * tick, and null already means indefinite, a single way to say it. The ceiling is an operational month:
+ * an operator pausing longer than 30 days wants `stop`, and an unbounded value would only surface later
+ * as a PostgreSQL interval error instead of a clear refusal.
  */
 final readonly class PauseProjectionInput
 {

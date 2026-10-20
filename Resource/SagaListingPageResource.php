@@ -14,11 +14,13 @@ use Storm\Saga\Store\Inspection\SagaInspectionGateway;
 
 /**
  * The sagas as an ops directory, the HTTP twin of `storm:saga:list`: the surface that answers "which
- * sagas are there" for a caller holding an incident and no correlation id. Its sibling
- * {@see SagaResource} answers "what happened to THIS one" and needs the correlation up front.
+ * sagas are there" for a caller holding an incident and no correlation id.
+ *
+ * Its sibling {@see SagaResource} answers "what happened to this one" and needs the correlation up
+ * front.
  *
  * An envelope rather than a bare array, the shape {@see SagaHistoryResource} already uses, and for the
- * reason the store computes: the window is read one row past the cap, so truncation is KNOWN. A
+ * reason the store computes: the window is read one row past the cap, so truncation is known. A
  * collection of exactly `limit` rows carrying no flag reads as the whole population, and there is no
  * cursor to page past the wall, only filters a caller does not know they need to narrow.
  *
@@ -26,9 +28,9 @@ use Storm\Saga\Store\Inspection\SagaInspectionGateway;
  * traffic. Rows come oldest-touched first, so the sagas an operator is hunting sit at the top of the
  * first window rather than at the end of the last.
  *
- * `idle_for` is seconds here where the console takes a compact `30m`/`6h`/`3d`: the parser for that
- * form lives in Clock, which is deliberately outside this package's dependency ceiling, and seconds
- * are the honest wire form for an HTTP query anyway.
+ * `idle_for` is seconds here where the console takes a compact `30m`, `6h` or `3d`: the parser for
+ * that form lives in Clock, which stays outside this package's dependency ceiling, and seconds are the
+ * natural wire form for an HTTP query anyway.
  */
 #[ApiResource(
     shortName: 'StormSagaListing',

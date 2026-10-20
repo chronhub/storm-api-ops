@@ -10,7 +10,7 @@ use Storm\ApiOps\Error\SagaRedriveRefused;
 use Storm\Saga\Outbox\RedriveOutcome;
 
 /**
- * Every refusal an operator can actually receive says WHY, in its own words. The sentence is the
+ * Every refusal an operator can actually receive says why, in its own words. The sentence is the
  * one the console prints, so a ticket quoting it cannot betray which channel produced it; a
  * refusal folding into the generic arm would read as a bug report instead of an instruction.
  */

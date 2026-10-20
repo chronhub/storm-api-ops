@@ -8,9 +8,10 @@ use RuntimeException;
 
 /**
  * A destructive action reached the ops surface with no owned identity: refused before touching
- * anything, the package's own fail-closed backstop under the app's firewall. A 403 on purpose.
- * The caller is not missing a parameter, it is missing WHO IT IS: the audit trail names who
- * acted, and an anonymous mutation would make that line a blank on a destructive action.
+ * anything, the package's own fail-closed backstop under the app's firewall.
+ *
+ * A 403, because what the caller lacks is an identity, not a parameter: the audit trail names who
+ * acted, and an anonymous mutation would leave that line blank on a destructive action.
  *
  * Dev and demo environments opt out explicitly with `storm_api_ops.allow_anonymous_mutations`;
  * the default refuses.

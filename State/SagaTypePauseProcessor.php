@@ -19,14 +19,17 @@ use Storm\ApiOps\Resource\SagaTypeResource;
 use Storm\Saga\Build\WorkflowRegistry;
 use Storm\Saga\Exception\SagaStorageFailure;
 use Storm\Saga\Store\WorkflowPauses;
+use Storm\Support\Error\AuditDigest;
 use Throwable;
 
 /**
- * The fleet-wide freeze over HTTP, the twins of `storm:saga:pause` / `storm:saga:resume` with the
- * type alone: one row in `workflow_pauses` gates every step AND every birth of the type; deleting
- * it restores the regime. The pause is idempotent by the store's own contract, the first stamp and
- * reason standing; the resume of an unfrozen type is the console's warning as a 409. The answered
- * resource states the registry's truth AFTER the verb, read back rather than assumed.
+ * The fleet-wide freeze over HTTP, the twins of `storm:saga:pause` and `storm:saga:resume` with the
+ * type alone.
+ *
+ * One row in `workflow_pauses` gates every step and every birth of the type; deleting it restores the
+ * regime. The pause is idempotent by the store's own contract, the first stamp and reason standing; the
+ * resume of an unfrozen type is the console's warning as a 409. The answered resource states the
+ * registry's truth after the verb, read back rather than assumed.
  *
  * The pause is registry-checked, its console twin's refusal as a 404: the store stamps any string
  * handed to it, and the resume of an unknown type already answers loud on its own.
@@ -58,12 +61,10 @@ final readonly class SagaTypePauseProcessor implements ProcessorInterface
     #[Override]
     public function process(mixed $data, Operation $operation, array $uriVariables = [], array $context = []): SagaTypeResource
     {
-        // @infection-ignore-all; equivalent: the cast serves the ANALYSER, the array being typed mixed; the router only ever supplies strings, so dropping it changes no runtime value
-        $type = (string) ($uriVariables['workflowType'] ?? '');
-        // @infection-ignore-all; equivalent: the cast serves the ANALYSER, the array being typed mixed; the router only ever supplies strings, so dropping it changes no runtime value
-        $action = (string) ($operation->getExtraProperties()['storm_ops_action'] ?? '');
+        $type = OpsRoute::string($uriVariables, 'workflowType');
+        $action = OpsRoute::string($operation->getExtraProperties(), 'storm_ops_action');
 
-        // before the registry on purpose: an anonymous caller learns nothing, not even existence
+        // before the registry: an anonymous caller learns nothing, not even existence
         $this->gate->assertOwnedIdentity($action, $type);
 
         try {
@@ -93,11 +94,12 @@ final readonly class SagaTypePauseProcessor implements ProcessorInterface
                     ));
             }
         } catch (UnknownWorkflowType|SagaPauseRefused|LogicException $e) {
-            throw $e; // the refusals recorded at their branches; the wiring fault mutated nothing and leaves no line
+            // the refusals recorded at their branches; the wiring fault mutated nothing and leaves no line
+            throw $e;
         } catch (Throwable $e) {
-            // an infrastructure outage is a FAILURE, never a refusal: the audit line must not read
+            // an infrastructure outage is a failure, never a refusal: the audit line must not read
             // as an operator's verb declined when the store simply went away
-            $this->audit->record($action, $type, 'failed: '.$e->getMessage());
+            $this->audit->record($action, $type, 'failed: '.AuditDigest::digest($e));
 
             throw $e;
         }

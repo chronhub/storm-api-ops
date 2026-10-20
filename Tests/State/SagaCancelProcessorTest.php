@@ -7,6 +7,7 @@ namespace Storm\ApiOps\Tests\State;
 use ApiPlatform\Metadata\Post;
 use Doctrine\DBAL\Connection;
 use LogicException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
@@ -23,8 +24,13 @@ use Storm\ApiOps\Tests\Fixture\RecordingLog;
 use Storm\Saga\Build\WorkflowRegistry;
 use Storm\Saga\Engine\SagaEngine;
 use Storm\Saga\Exception\SagaStorageFailure;
+use Storm\Saga\Exception\StaleWorkflowInstance;
+use Storm\Saga\Exception\WorkflowNotFound;
+use Storm\Saga\Exception\WorkflowVersionNotFound;
 use Storm\Saga\Store\Inspection\SagaInspectionGateway;
 use Storm\Saga\Store\Inspection\SagaSnapshot;
+use Storm\Saga\Testing\InMemory\PlainMessageTypeMapper;
+use Throwable;
 
 final class SagaCancelProcessorTest extends TestCase
 {
@@ -145,8 +151,8 @@ final class SagaCancelProcessorTest extends TestCase
         $this->assertSame([], $log->applied());
         $this->assertSame('refused: anonymous mutation', $log->records[0]['context']['outcome']);
 
-        // the subject is the whole point of the trail: an operator reading it must know WHICH saga
-        // was refused, so the type and the correlation both have to be in it, in that order
+        // the subject is what the trail is for: an operator reading it must know which saga was
+        // refused, so the type and the correlation both have to be in it, in that order
         $this->assertSame('payment/c-1', $log->records[0]['context']['subject']);
     }
 
@@ -154,7 +160,7 @@ final class SagaCancelProcessorTest extends TestCase
     public function a_foreign_input_class_is_a_wiring_fault_refused_ahead_of_the_gate(): void
     {
         // a resource declaring another input class is a composition bug, and it is caught before
-        // the actor gate and before the engine. The order is the point, so the caller is anonymous
+        // the actor gate and before the engine. The order is what this pins, so the caller is anonymous
         // under a gate that refuses: whichever guard runs first names itself in the exception, and
         // an AnonymousMutationRefused here would mean an operator's 403 hides a wiring fault
         $engine = $this->createMock(SagaEngine::class);
@@ -164,7 +170,7 @@ final class SagaCancelProcessorTest extends TestCase
 
         $processor = new SagaCancelProcessor(
             $engine,
-            new SagaInspectionGateway($this->createStub(Connection::class), new WorkflowRegistry),
+            new SagaInspectionGateway($this->createStub(Connection::class), new WorkflowRegistry, new PlainMessageTypeMapper),
             $audit,
             new OpsActorGate($audit, null, allowAnonymous: false),
         );
@@ -180,35 +186,114 @@ final class SagaCancelProcessorTest extends TestCase
         $this->assertSame([], $log->records);
     }
 
-    // rig
+    #[Test]
+    public function a_storage_failure_out_of_the_engine_is_audited_as_failed(): void
+    {
+        // a saga storage outage is a failure: an audit line calling it refused would read as an
+        // operator's verb declined when the store simply went away
+        $outage = SagaStorageFailure::unavailable(new RuntimeException('pg down'));
+
+        $this->assertSame("failed: Storm\\Saga\\Exception\\SagaStorageFailure: The saga storage failed.\ncaused by: RuntimeException: pg down", $this->outcomeOfAThrowingCancel($outage));
+    }
 
     #[Test]
-    public function an_engine_throw_is_audited_by_its_nature_storage_failed_the_rest_refused(): void
+    public function a_compensation_failure_is_audited_as_failed(): void
     {
-        // the audit vocabulary: a saga storage outage is a FAILURE, an audit line calling it
-        // refused would read as an operator's verb declined when the store simply went away;
-        // every other throw out of the engine stays a refusal, the pre-existing reading
-        $log = new RecordingLog;
-        $outage = SagaStorageFailure::unavailable(new RuntimeException('pg down'));
-        $engine = $this->createStub(SagaEngine::class);
-        $engine->method('cancel')->willThrowException($outage);
+        // the engine lets a compensation's own failure escape the cancel: the verb was accepted and
+        // did not complete, and no guard declined it
+        $failure = new RuntimeException('compensation command could not be issued');
 
-        $audit = new OpsAuditLog($log);
+        $this->assertSame('failed: RuntimeException: compensation command could not be issued', $this->outcomeOfAThrowingCancel($failure));
+    }
+
+    #[Test]
+    public function a_purged_definition_version_is_audited_as_failed(): void
+    {
+        // the engine raises this `LogicException` about the instance's pinned definition, and the
+        // resource declaration is sound: the cancel was attempted and failed
+        $purged = WorkflowVersionNotFound::for('payment', 2);
+
+        $this->assertSame('failed: '.WorkflowVersionNotFound::class.': '.$purged->getMessage(), $this->outcomeOfAThrowingCancel($purged));
+    }
+
+    #[Test]
+    public function a_read_that_fails_while_naming_the_refusal_is_audited_as_failed(): void
+    {
+        // the engine declined and the read that names why went away: no cause reached the caller,
+        // so the line reads as a failure and the read's own throwable escapes unchanged
+        $engine = $this->createStub(SagaEngine::class);
+        $engine->method('cancel')->willReturn(false);
+        $outage = new RuntimeException('pg down');
+        $connection = $this->createStub(Connection::class);
+        $connection->method('transactional')->willThrowException($outage);
+        $log = new RecordingLog;
+
         $processor = new SagaCancelProcessor(
             $engine,
-            new SagaInspectionGateway($this->createStub(Connection::class), new WorkflowRegistry),
-            $audit,
+            new SagaInspectionGateway($connection, new WorkflowRegistry, new PlainMessageTypeMapper),
+            new OpsAuditLog($log),
             new OpsActorGate(new OpsAuditLog(new NullLogger), null, allowAnonymous: true),
         );
 
         try {
-            $processor->process(new CancelSagaInput(workflowType: 'transfer'), new Post, ['correlationId' => 'c-1']);
-            $this->fail('the storage failure must propagate');
-        } catch (SagaStorageFailure) {
+            $processor->process(new CancelSagaInput(workflowType: 'payment'), new Post, ['correlationId' => 'c-1']);
+            self::fail('a read that fails must escape');
+        } catch (RuntimeException $e) {
+            $this->assertSame($outage, $e);
         }
 
-        // the whole sentence: a verdict without its cause records that something failed without saying what
-        $this->assertSame('failed: '.$outage->getMessage(), $log->records[0]['context']['outcome']);
+        $this->assertCount(1, $log->records);
+        $this->assertSame('failed: RuntimeException: pg down', $log->records[0]['context']['outcome'] ?? null);
+    }
+
+    /**
+     * @return iterable<string, array{Throwable}>
+     */
+    public static function namedDeclines(): iterable
+    {
+        yield 'unregistered workflow, a 404' => [WorkflowNotFound::named('payment')];
+        yield 'stale instance, a 409' => [StaleWorkflowInstance::forStep('payment', 'c-1', 3)];
+    }
+
+    #[Test]
+    #[DataProvider('namedDeclines')]
+    public function a_named_decline_out_of_the_engine_is_audited_as_refused(Throwable $decline): void
+    {
+        // the engine's declines that the resource answers with a 4xx stay refusals
+        $this->assertSame('refused: '.$decline->getMessage(), $this->outcomeOfAThrowingCancel($decline));
+    }
+
+    // rig
+
+    private function outcomeOfAThrowingCancel(Throwable $thrown): string
+    {
+        $engine = $this->createStub(SagaEngine::class);
+        $engine->method('cancel')->willThrowException($thrown);
+        $log = new RecordingLog;
+
+        $processor = new SagaCancelProcessor(
+            $engine,
+            new SagaInspectionGateway($this->createStub(Connection::class), new WorkflowRegistry, new PlainMessageTypeMapper),
+            new OpsAuditLog($log),
+            new OpsActorGate(new OpsAuditLog(new NullLogger), null, allowAnonymous: true),
+        );
+
+        $escaped = null;
+
+        try {
+            $processor->process(new CancelSagaInput(workflowType: 'payment'), new Post, ['correlationId' => 'c-1']);
+        } catch (Throwable $e) {
+            $escaped = $e;
+        }
+
+        // the engine's throwable escapes unchanged, after exactly one record carrying the whole
+        // sentence: a verdict without its cause says something went wrong without saying what
+        $this->assertSame($thrown, $escaped);
+        $this->assertCount(1, $log->records);
+        $outcome = $log->records[0]['context']['outcome'] ?? null;
+        $this->assertIsString($outcome);
+
+        return $outcome;
     }
 
     /**
@@ -228,7 +313,7 @@ final class SagaCancelProcessorTest extends TestCase
 
         return new SagaCancelProcessor(
             $engine,
-            new SagaInspectionGateway($connection, new WorkflowRegistry),
+            new SagaInspectionGateway($connection, new WorkflowRegistry, new PlainMessageTypeMapper),
             $audit,
             new OpsActorGate($allowAnonymous ? new OpsAuditLog(new NullLogger) : $audit, null, allowAnonymous: $allowAnonymous),
         );

@@ -18,8 +18,8 @@ use function sprintf;
 /**
  * The module's absence promise, derived instead of copied: every ops resource declares
  * `openapi: false`, so an app whose `/api/docs` stays public does not advertise the shape of its
- * cancel, redrive and crypto-shred endpoints. Ten hand-written declarations kept the promise by
- * discipline alone; an eleventh resource missing the line would publish its shape with nothing red.
+ * cancel, redrive and crypto-shred endpoints. Hand-written declarations keep that promise by
+ * discipline alone, and a new resource missing the line would publish its shape with nothing red.
  */
 final class OpsSurfaceStaysOutOfTheDocsTest extends TestCase
 {

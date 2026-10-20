@@ -8,10 +8,12 @@ use RuntimeException;
 use Storm\Projector\Store\ProjectionStatus;
 
 /**
- * A status-control verb refused by the projection state machine, the same refusal the console
- * marker commands print, answered as a 409: the request conflicts with the CURRENT state, and the
- * state may legitimately change, so the caller may retry after acting on it. The predicates live
- * on `ProjectionStatus`, the single source of the state machine; this only names the refusal.
+ * A status-control verb refused by the projection state machine, the same refusal the console marker
+ * commands print, answered as a 409.
+ *
+ * The request conflicts with the current state, and the state may legitimately change, so the caller
+ * may retry after acting on it. The predicates live on `ProjectionStatus`, the single source of the
+ * state machine; this only names the refusal.
  */
 final class ProjectionTransitionRefused extends RuntimeException
 {
@@ -28,8 +30,10 @@ final class ProjectionTransitionRefused extends RuntimeException
 
     /**
      * The compare-and-set found the row no longer in the state the request was validated against: a
-     * worker moved it between the read and the write. Nothing was written, and the caller can retry
-     * against the fresh state. Same 409 semantics, a different cause.
+     * worker moved it between the read and the write.
+     *
+     * Nothing was written, and the caller can retry against the fresh state. Same 409 semantics, a
+     * different cause.
      */
     public static function raced(string $verb, string $name): self
     {

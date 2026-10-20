@@ -40,7 +40,7 @@ final class CorrelationEventsProviderTest extends TestCase
     #[Group('adversarial')]
     public function an_anonymous_read_is_refused_before_the_set_is_even_parsed(): void
     {
-        // the ordering IS the assertion: an unnamed caller must not learn that its set was
+        // the ordering is the assertion: an unnamed caller must not learn that its set was
         // malformed, so the gate answers first and a blank set still reads 403 and not 422
         $reader = $this->createMock(StreamReader::class);
         $reader->expects($this->never())->method('retrieveByFilter');
@@ -57,7 +57,7 @@ final class CorrelationEventsProviderTest extends TestCase
     #[Group('adversarial')]
     public function a_set_of_nothing_widens_to_the_whole_store_so_it_is_refused(): void
     {
-        // dropping a narrowing parameter WIDENS: with no predicate this window would answer every
+        // dropping a narrowing parameter widens: with no predicate this window would answer every
         // stored event, so an unusable set is a 422 rather than an empty page or a scan
         $reader = $this->createMock(StreamReader::class);
         $reader->expects($this->never())->method('retrieveByFilter');

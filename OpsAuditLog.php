@@ -14,24 +14,29 @@ use Throwable;
  * Each record names the action and its subject, with the outcome and the Bureau-resolved `Actor`
  * when the app wires an `IdentityProvider`.
  *
- * Delegated to the app's logging stack on purpose, the same doctrine as the alerts engine: the
- * framework emits the structured fact, routing and retention are ops concerns. A dedicated audit
- * table is not the default. Saga cancels additionally carry their operator reason INTO the event
- * store on `SagaCancelled`, the durable trail where one already exists.
+ * It delegates to the app's logging stack, the same doctrine as the alerts engine: the framework emits
+ * the structured fact, and routing and retention are ops concerns. A dedicated audit table is not the
+ * default. Saga cancels also carry their operator reason into the event store on `SagaCancelled`, the
+ * durable trail where one already exists.
  *
- * BEST-EFFORT BY CONTRACT, and therefore shielded: `record()` sits on served read paths and in the
- * refusal branches, on the failure arm when an outage interrupts an accepted verb, and right after
- * the applied action, so a throwing logger or identity backend
- * must never replace the business outcome by masking a 404/409 or turning an applied reset into a
- * 500 the caller retries. Observability's fail-open rule, the same the Telemetry ports declare;
- * the swallowed failure is deliberately not re-logged, because the only channel available is the
- * one that just failed. Authorization is the exact opposite: {@see OpsActorGate} reads the
- * identity UNSHIELDED, because an unanswerable backend must fail the request closed, never demote
- * it.
+ * The channel is best-effort by contract, and therefore shielded. `record()` runs:
  *
- * A dropped emission is reported once to the optional `OpsAuditDegradationObserver`, itself
- * shielded. A failure raised while that signal is in flight, typically a listener recording again
- * on a sink that is still down, is dropped without a second signal, so reentrance stays bounded.
+ * - On served read paths
+ * - In the refusal branches
+ * - On the failure arm, when an outage interrupts an accepted verb
+ * - Right after the applied action
+ *
+ * A throwing logger or identity backend must therefore never replace the business outcome, by masking
+ * a 404 or 409 or by turning an applied reset into a 500 the caller retries. This is observability's
+ * fail-open rule, the one the Telemetry ports declare; the swallowed failure is not re-logged, because
+ * the only channel available is the one that just failed.
+ *
+ * Authorization is the opposite: {@see OpsActorGate} reads the identity unshielded, because an
+ * unanswerable backend must fail the request closed, never demote it.
+ *
+ * A dropped emission is reported once to the optional `OpsAuditDegradationObserver`, itself shielded. A
+ * failure raised while that signal is in flight, typically a listener recording again on a sink that is
+ * still down, is dropped without a second signal, so reentrance stays bounded.
  */
 final class OpsAuditLog
 {

@@ -14,25 +14,26 @@ use function is_string;
 use function trim;
 
 /**
- * The correlation window's WIDTH arithmetic: the one parse that reads a comma-separated `ids`
+ * The correlation window's width arithmetic: the one parse that reads a comma-separated `ids`
  * parameter, and the one ceiling on how many of them may reach `CorrelationFeedFilter`.
  *
- * A width is not a page, and confusing the two is the mistake this class is placed beside
- * `PageWindow` to prevent. `PageWindow` bounds the ROWS a read returns; this bounds the terms of the
- * predicate that selects them. They are independent: one id can fill a page, and a set at the
- * ceiling can match nothing.
+ * A width is not a page, and this class sits beside `PageWindow` to keep the two apart. `PageWindow`
+ * bounds the rows a read returns; this bounds the terms of the predicate that selects them. They are
+ * independent: one id can fill a page, and a set at the ceiling can match nothing.
  *
  * Shared rather than copied, because both HTTP surfaces over this read parse the same parameter and
  * must admit the same set. What they do at the ceiling differs and stays theirs: the JSON window
  * refuses, having no channel to report a narrowing, while the screen narrows and says so.
  *
- * The ceiling is the widest ONE-HOP lineage the write side can mint: a parent, plus the 64 children
+ * The ceiling is the widest one-hop lineage the write side can mint: a parent, plus the 64 children
  * `Storm\Saga\Child\ChildSpawner` lets one saga spawn. One hop is the unit both surfaces trace, a
- * deeper family being asked for again with the children as the typed set, so the ceiling is not the
- * whole tree and was never meant to be. Below it a legitimate lineage would be refused; above it
- * nothing one hop can produce is gained, while every extra id is carried three times over, as a
- * bound term of the `IN` list, as part of the audit subject, and in the query string the screen
- * echoes back.
+ * deeper family being asked for again with the children as the typed set, so the ceiling never covers
+ * the whole tree. Below it a legitimate lineage would be refused; above it nothing one hop can produce is
+ * gained, while every extra id is carried three times over:
+ *
+ * - As a bound term of the `IN` list
+ * - As part of the audit subject
+ * - In the query string the screen echoes back
  */
 final readonly class CorrelationIdSet
 {
@@ -68,9 +69,9 @@ final readonly class CorrelationIdSet
      * The head of the set, cut to the ceiling, for the surface that reports a narrowing instead of
      * refusing it.
      *
-     * Cutting NARROWS the predicate, so the result can only match fewer rows than asked, never more.
-     * That direction is what makes it a safe answer at all; the opposite one, a dropped narrowing
-     * parameter, is the widening every surface here refuses.
+     * Cutting narrows the predicate, so the result can only match fewer rows than asked, never more.
+     * That direction is what makes it a safe answer; the opposite one, a dropped narrowing parameter,
+     * is the widening every surface here refuses.
      *
      * @param  non-empty-list<string>  $ids
      * @return non-empty-list<string>

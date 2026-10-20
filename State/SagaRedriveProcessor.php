@@ -20,22 +20,22 @@ use Storm\Saga\Exception\SagaStorageFailure;
 use Storm\Saga\Outbox\FailedWorkflowCommands;
 use Storm\Saga\Outbox\RedriveOutcome;
 use Storm\Saga\Store\Inspection\SagaInspectionGateway;
+use Storm\Support\Error\AuditDigest;
 use Throwable;
 
 use function sprintf;
 
 /**
- * The operator's repair over HTTP, the twin of `storm:saga:redrive`, through the same store verb:
- * send a dead-lettered command back into flight instead of cancelling the saga around it.
+ * The operator's repair over HTTP, the twin of `storm:saga:redrive`, through the same store verb: send a
+ * dead-lettered command back into flight instead of cancelling the saga around it.
  *
- * It re-decides NOTHING. All four guards live in the store's UPDATE predicate, and the sealed
- * {@see \Storm\Saga\Outbox\RedriveOutcome} it returns is what this translates into HTTP: a 404 for
- * a command that does not exist, a 409 naming the guard for everything else. Two channels, one
- * decision.
+ * It re-decides nothing. All four guards live in the store's `UPDATE` predicate, and the sealed
+ * {@see \Storm\Saga\Outbox\RedriveOutcome} it returns is what this translates into HTTP: a 404 for a
+ * command that does not exist, a 409 naming the guard for everything else. Two channels, one decision.
  *
- * Where this surface earns its keep over the console: the actor. A forced redrive accepts that the
- * effect may execute twice, and the ops log records WHO decided it beside the reason they gave. The
- * console has the verb; only this one has the name.
+ * What this surface adds over the console is the actor. A forced redrive accepts that the effect may
+ * execute twice, and the ops log records who decided it beside the reason they gave. The console has
+ * the verb; only this one has the name.
  *
  * A successful redrive answers the instance's fresh snapshot, whose outbox row now reads `pending`
  * again, the first thing an operator checks.
@@ -68,31 +68,33 @@ final readonly class SagaRedriveProcessor implements ProcessorInterface
             throw new LogicException('The redrive operation declares its input class; anything else is a resource declaration fault.');
         }
 
-        // @infection-ignore-all; equivalent: the cast serves the ANALYSER, the array being typed mixed; the router only ever supplies strings, so dropping it changes no runtime value
-        $correlationId = (string) ($uriVariables['correlationId'] ?? '');
+        $correlationId = OpsRoute::string($uriVariables, 'correlationId');
         $input = $data;
         $subject = $correlationId.'/'.$input->messageId;
 
-        // before the store on purpose: an anonymous caller learns nothing, not even existence
+        // before the store: an anonymous caller learns nothing, not even existence
         $this->gate->assertOwnedIdentity('redrive', $subject);
 
         try {
             $outcome = $this->outbox->redrive($correlationId, $input->messageId, $input->force);
-        } catch (Throwable $e) {
-            // an infrastructure outage is a FAILURE, never a refusal: the audit line must not read
-            // as a guard's decline when the outbox simply went away
-            $this->audit->record('redrive', $subject, 'failed: '.$e->getMessage());
+
+            if ($outcome !== RedriveOutcome::Redriven) {
+                // a command that does not exist is not a conflict, it is a wrong address
+                throw $outcome === RedriveOutcome::NotFound
+                    ? SagaCommandNotFound::command($correlationId, $input->messageId)
+                    : SagaRedriveRefused::because($outcome, $correlationId, $input->messageId);
+            }
+        } catch (SagaCommandNotFound|SagaRedriveRefused $e) {
+            // the store's named declines, answered 404 and 409 by the resource
+            $this->audit->record('redrive', $subject, 'refused: '.$e->getMessage());
 
             throw $e;
-        }
+        } catch (Throwable $e) {
+            // an infrastructure outage is a failure, never a refusal: the audit line must not read
+            // as a guard's decline when the outbox simply went away
+            $this->audit->record('redrive', $subject, 'failed: '.AuditDigest::digest($e));
 
-        if ($outcome !== RedriveOutcome::Redriven) {
-            $this->audit->record('redrive', $subject, 'refused: '.$outcome->value);
-
-            // a command that does not exist is not a conflict, it is a wrong address
-            throw $outcome === RedriveOutcome::NotFound
-                ? SagaCommandNotFound::command($correlationId, $input->messageId)
-                : SagaRedriveRefused::because($outcome, $correlationId, $input->messageId);
+            throw $e;
         }
 
         $this->audit->record('redrive', $subject, $input->force

@@ -9,8 +9,8 @@ use Storm\Contracts\Message\DomainEvent;
 /**
  * A minimal domain event for the read surfaces, which refuse anything else.
  *
- * Local to this package on purpose: a package's `Tests/` is export-ignored, so borrowing another
- * module's fixture would compile here and vanish from a standalone install.
+ * Local to this package: a package's `Tests/` is export-ignored, so borrowing another module's
+ * fixture would compile here and vanish from a standalone install.
  */
 final class StreamedEvent implements DomainEvent
 {

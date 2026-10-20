@@ -12,7 +12,7 @@ use function sprintf;
  * A query parameter present and unusable: the ops surface's 422, declared on the resource's
  * `exceptionToStatus`, and the twin of the console options that refuse the same value in words.
  *
- * A narrowing parameter is the one place silence costs most. Dropped, the request WIDENS: a caller
+ * A narrowing parameter is the one place silence costs most. Dropped, the request widens: a caller
  * who asked for one run of a reused correlation is served every run it ever had, in an envelope
  * that never echoes what was applied, so the answer is both wrong and unfalsifiable at the caller.
  */

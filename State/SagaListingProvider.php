@@ -26,15 +26,16 @@ use function is_string;
 
 /**
  * The filtered saga directory, the HTTP twin of `storm:saga:list`, over the same gateway the console
- * renders. The window is the gateway's own cap, so no caller can talk this surface into an unbounded
- * scan, and the truncation flag travels with the rows: the gateway reads one row past the cap, so a
- * full page is distinguishable from a finished population, and there is no cursor to page past the
- * wall.
+ * renders.
+ *
+ * The window is the gateway's own cap, so no caller can talk this surface into an unbounded scan, and
+ * the truncation flag travels with the rows: the gateway reads one row past the cap, so a full page is
+ * distinguishable from a finished population, and there is no cursor to page past the wall.
  *
  * An unknown status never reaches this provider over HTTP: the parameter schema declares the enum,
- * which API Platform compiles into a real constraint, so a typo'd status is a 422 at the edge, the
- * same refusal the console makes for its own reasons. The `tryFrom` fallback below is therefore a
- * dead net over HTTP and stands only for a caller invoking the provider directly.
+ * which API Platform compiles into a real constraint, so a typo'd status is a 422 at the edge, the same
+ * refusal the console makes for its own reasons. The `tryFrom` fallback below is therefore unreachable
+ * over HTTP and stands only for a caller invoking the provider directly.
  *
  * @implements ProviderInterface<SagaListingPageResource>
  */
@@ -47,7 +48,6 @@ final readonly class SagaListingProvider implements ProviderInterface
 
     /**
      * {@inheritDoc}
-     *
      *
      * @throws MalformedQueryParameter when `limit` or `idle_for` is present and is not a positive
      *                                 integer, a 422; reading either loosely serves an answer the
@@ -72,7 +72,7 @@ final readonly class SagaListingProvider implements ProviderInterface
         $limit = $filters['limit'] ?? null;
 
         // both integer filters are read through the parser the console twin uses, so one rule answers
-        // for both channels: integral in FORM, not merely numeric. The declared schema compiles a
+        // for both channels: integral in form, not merely numeric. The declared schema compiles a
         // range that refuses what is no number at all, and passes a fraction; cast, `idle_for`
         // loosens the very guard it names and serves sagas the caller asked to leave out, while
         // `limit` echoes a window nobody requested back as though it had been.

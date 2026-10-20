@@ -14,14 +14,15 @@ use Storm\ApiOps\State\AggregateStateProvider;
 
 /**
  * One aggregate in introspection: category, id, current version, and, when the aggregate is
- * snapshotable, its state rendered by the aggregate's own `toSnapshot()` representation. A
- * non-snapshotable aggregate honestly answers `state: null`, version and existence only, rather
- * than inventing a normalization the framework refuses. No `storm:*` command renders an
- * aggregate's fold, so this read has no console twin. A `version` query parameter serves the same
- * shape at that past version, a read-only diagnostic folded by today's code.
+ * snapshotable, its state rendered by the aggregate's own `toSnapshot()` representation.
  *
- * Ops zone only, by doctrine: an app-facing read that "would need" this endpoint is a missing
- * query; the aggregate over HTTP exists solely as introspection.
+ * A non-snapshotable aggregate answers `state: null`, version and existence only, rather than
+ * inventing a normalization the framework refuses. No `storm:*` command renders an aggregate's fold, so
+ * this read has no console twin. A `version` query parameter serves the same shape at that past
+ * version, a read-only diagnostic folded by today's code.
+ *
+ * The endpoint lives in the ops zone only: an app-facing read that "would need" it is a missing query,
+ * and the aggregate over HTTP exists solely as introspection.
  */
 #[ApiResource(
     shortName: 'StormAggregate',
@@ -33,7 +34,7 @@ use Storm\ApiOps\State\AggregateStateProvider;
             // not make the aggregate unaddressable; the category regex, by contrast, never
             // carries a slash. The one reserved suffix is `/events`: this route registers before
             // the history window's and would swallow it greedily, so the lookbehind hands those
-            // paths back; an id ENDING in "/events" reads its history, never its state
+            // paths back; an id ending in "/events" reads its history, never its state
             requirements: ['id' => '.+(?<!/events)'],
             provider: AggregateStateProvider::class,
             parameters: [

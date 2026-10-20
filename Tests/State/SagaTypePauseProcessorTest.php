@@ -87,7 +87,7 @@ final class SagaTypePauseProcessorTest extends TestCase
             $this->assertSame($outage, $e);
         }
 
-        $this->assertSame('failed: The saga storage failed: the pause store went away', $log->records[0]['context']['outcome']);
+        $this->assertSame("failed: Storm\\Saga\\Exception\\SagaStorageFailure: The saga storage failed.\ncaused by: RuntimeException: the pause store went away", $log->records[0]['context']['outcome']);
     }
 
     #[Test]
@@ -109,7 +109,7 @@ final class SagaTypePauseProcessorTest extends TestCase
             $this->assertStringContainsString('was not frozen', $e->getMessage());
         }
 
-        // the refusal is audited: an operator must read WHY the lift did nothing, and counting
+        // the refusal is audited: an operator must read why the lift did nothing, and counting
         // applied records cannot tell a refusal from a silence
         $this->assertSame('refused: type not frozen', $log->records[0]['context']['outcome']);
         // one line exactly: a refusal that also fell through the failure arm would lie twice
@@ -134,7 +134,7 @@ final class SagaTypePauseProcessorTest extends TestCase
             $this->assertStringContainsString('resource declaration fault', $e->getMessage());
         }
 
-        // no line at ALL, not merely none applied: a wiring fault mutates nothing, so a failed:
+        // no line at all, not merely none applied: a wiring fault mutates nothing, so a failed:
         // line here would blame an outage for a declaration bug
         $this->assertSame([], $log->records);
     }
@@ -193,7 +193,7 @@ final class SagaTypePauseProcessorTest extends TestCase
     #[Test]
     public function lifting_a_type_no_registry_knows_stays_the_conflict_it_already_was(): void
     {
-        // the registry check is on the FREEZE alone, on purpose: a resume writes nothing, and the
+        // the registry check is on the freeze alone: a resume writes nothing, and the
         // store already answers false on a type it never froze, so the 409 says the truer thing
         $instances = $this->createStub(WorkflowInstanceStore::class);
         $instances->method('resumeType')->willReturn(false);

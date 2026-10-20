@@ -63,7 +63,7 @@ final class OpsActorGateTest extends TestCase
     #[Test]
     public function a_wired_provider_with_no_bound_actor_still_refuses(): void
     {
-        // wiring the substrate is not the gesture; BINDING an actor is: an unauthenticated
+        // wiring the substrate is not the gesture; binding an actor is: an unauthenticated
         // request cycle carries null, and null is anonymous whatever services exist around it
         $gate = new OpsActorGate(new OpsAuditLog(new NullLogger), $this->providerReturning(null));
 
@@ -112,9 +112,9 @@ final class OpsActorGateTest extends TestCase
     public function an_anonymous_read_is_refused_on_its_own_knob(): void
     {
         // the read half of the same backstop: the one misconfiguration the docs warn about must
-        // fail as loud on GET as on POST, never drain the store silently; and the mutation opt-out
-        // does NOT open the reads, the two knobs owning different blast radii. The refusal itself
-        // is on the audit line, like the mutation twin's.
+        // fail as loudly on `GET` as on `POST`, never drain the store silently; and the mutation
+        // opt-out does not open the reads, the two knobs owning different blast radii. The refusal
+        // itself is on the audit line, like the mutation twin's.
         $spy = new class() extends AbstractLogger
         {
             /** @var list<array<string, mixed>> */
@@ -180,9 +180,9 @@ final class OpsActorGateTest extends TestCase
     #[Group('adversarial')]
     public function an_unanswerable_identity_backend_fails_the_request_closed(): void
     {
-        // the IdentityProvider contract: an outage THROWS, it never demotes to anonymous. The
-        // gate must let that propagate; swallowing it here would turn an IAM outage into either
-        // a wrong 403 or, worse, a pass; the audit shield is the opposite boundary on purpose
+        // the IdentityProvider contract: an outage throws, it never demotes to anonymous. The gate
+        // must let that propagate; swallowing it here would turn an IAM outage into either a wrong
+        // 403 or, worse, a pass; the audit shield is the opposite boundary
         $backendDown = new RuntimeException('IAM unreachable');
         $gate = new OpsActorGate(new OpsAuditLog(new NullLogger), new readonly class($backendDown) implements IdentityProvider
         {

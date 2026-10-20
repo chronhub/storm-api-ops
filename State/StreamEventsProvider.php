@@ -27,20 +27,23 @@ use Storm\Stream\StreamName;
 use Throwable;
 
 /**
- * Stored events as an ops collection, the HTTP twin of `storm:events:inspect`: one provider for
- * both windows, a stream's events by name and an aggregate's history by category and id as its
- * qualified stream. A HYDRATED CURRENT view, not a forensic one: the read rides `StreamReader`,
- * so aliases resolve, upcasters run, and the served payload is the current event's `toPayload()`
- * through the {@see \Storm\Chronicler\Record\PersonalDataVeil}: a `#[Personal]` class's declared keys show
- * what the store holds, the envelope, never the decrypted values; inspection reads without
- * decrypting, by doctrine. The stored headers ride along untouched. Bounded by construction
- * through `EventFeedFilter` and the server-owned window. Every name selects its exact stream,
- * including a bare category name. Reads reach the store's head: introspection
- * wants the latest, and a transient near-head gap is harmless to a browser, so no safe-head bound
- * is applied, which is a projector's discipline, not an inspector's.
+ * Stored events as an ops collection, the HTTP twin of `storm:events:inspect`, one provider for both
+ * windows.
  *
- * A path that cannot form a stream name answers an empty window, like a stream that has none:
- * for collections, "nothing there" is the answer. Corrupt stored data, an unknown type or missing
+ * A stream's events are read by name, and an aggregate's history by category and id as its qualified
+ * stream. The view is hydrated and current, not forensic: the read rides `StreamReader`, so aliases
+ * resolve, upcasters run, and the served payload is the current event's `toPayload()` through the
+ * {@see \Storm\Chronicler\Record\PersonalDataVeil}. A `#[Personal]` class's declared keys show what the
+ * store holds, the envelope, never the decrypted values, since inspection reads without decrypting.
+ * The stored headers ride along untouched.
+ *
+ * Bounded by construction through `EventFeedFilter` and the server-owned window. Every name selects its
+ * exact stream, including a bare category name. Reads reach the store's head: introspection wants the
+ * latest, and a transient near-head gap is harmless to a browser, so no safe-head bound is applied;
+ * that bound is a projector's discipline, not an inspector's.
+ *
+ * A path that cannot form a stream name answers an empty window, like a stream that has none: for
+ * collections, "nothing there" is the answer. Corrupt stored data, an unknown type or a missing
  * upcaster, surfaces as the raw failure: a 500 an operator must see, never an empty page.
  *
  * @implements ProviderInterface<StoredEventResource>
@@ -75,8 +78,7 @@ final readonly class StreamEventsProvider implements ProviderInterface
     #[Override]
     public function provide(Operation $operation, array $uriVariables = [], array $context = []): array
     {
-        // @infection-ignore-all; equivalent: the cast serves the ANALYSER, the array being typed mixed; the router only ever supplies strings, so dropping it changes no runtime value
-        $subject = (string) ($uriVariables['stream'] ?? (($uriVariables['category'] ?? '').'-'.($uriVariables['id'] ?? '')));
+        $subject = OpsRoute::string($uriVariables, 'stream', OpsRoute::string($uriVariables, 'category').'-'.OpsRoute::string($uriVariables, 'id'));
         $this->gate->assertOwnedIdentityForRead('events.read', $subject);
 
         $scope = $this->scopeFrom($uriVariables);
@@ -110,10 +112,10 @@ final readonly class StreamEventsProvider implements ProviderInterface
     {
         try {
             if (isset($uriVariables['category'], $uriVariables['id'])) {
-                return new StreamName((string) $uriVariables['category'])->withQualifier((string) $uriVariables['id']);
+                return new StreamName(OpsRoute::string($uriVariables, 'category'))->withQualifier(OpsRoute::string($uriVariables, 'id'));
             }
 
-            return new StreamName((string) ($uriVariables['stream'] ?? ''));
+            return new StreamName(OpsRoute::string($uriVariables, 'stream'));
         } catch (InvalidStreamException) {
             return null;
         }

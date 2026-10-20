@@ -11,7 +11,7 @@ use RuntimeException;
  * conflict.
  *
  * Its own error rather than the engine's `WorkflowNotFound`, which says "no workflow registered
- * under X" and would be a lie here twice over: the workflow type is registered, and what is missing
+ * under X" and would be wrong here twice over: the workflow type is registered, and what is missing
  * is a command row or an instance. An operator reading a 404 body must learn which of the two.
  */
 final class SagaCommandNotFound extends RuntimeException

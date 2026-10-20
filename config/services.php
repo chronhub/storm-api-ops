@@ -11,10 +11,10 @@ use Storm\ApiOps\OpsAuditDegradationObserver;
  * ApiOps package wiring.
  *
  * Registers the introspection services with autowiring and autoconfiguration: the read providers
- * ride API Platform's autoconfiguration exactly like the bridge's own, and the AggregateCatalog
- * resolves its `storm.aggregates` parameter through its Autowire attribute. The resource DTOs and
- * the static window arithmetic are data, not services; they are excluded like the bridge excludes
- * its own.
+ * ride API Platform's autoconfiguration exactly like the bridge's own, and the `AggregateCatalog`
+ * resolves its `storm.aggregates` parameter through its `#[Autowire]` attribute. The resource DTOs are
+ * data, and the window arithmetic and the route reader are static helpers; none is a service, and they
+ * are excluded like the bridge excludes its own.
  */
 return static function (ContainerConfigurator $container): void {
     $services = $container->services()
@@ -26,6 +26,7 @@ return static function (ContainerConfigurator $container): void {
         ->exclude([
             dirname(__DIR__).'/Resource/', // resource DTOs, built by the providers, not services
             dirname(__DIR__).'/State/PageWindow.php', // static window arithmetic, not a service
+            dirname(__DIR__).'/State/OpsRoute.php', // static route reader, not a service
             dirname(__DIR__).'/OpsAuditDegraded.php', // event payload, built by the observer
             dirname(__DIR__).'/Tests/',
             dirname(__DIR__).'/config/',

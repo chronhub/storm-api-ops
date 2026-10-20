@@ -18,12 +18,13 @@ use Storm\ApiOps\Resource\SagaListingResource;
 use Storm\ApiOps\State\SagaListingProvider;
 use Storm\Saga\Build\WorkflowRegistry;
 use Storm\Saga\Store\Inspection\SagaInspectionGateway;
+use Storm\Saga\Testing\InMemory\PlainMessageTypeMapper;
 
 /**
  * The filtered directory the console's `storm:saga:list` twins, and the refusals that keep a
  * narrowing parameter from widening the answer in silence.
  *
- * The gate is asserted HERE and not only through the screen that renders this provider: the JSON
+ * The gate is asserted here, not only through the screen that renders this provider: the JSON
  * route has no controller in front of it, so this call is the whole guard on that channel.
  */
 final class SagaListingProviderTest extends TestCase
@@ -102,14 +103,14 @@ final class SagaListingProviderTest extends TestCase
     #[Group('adversarial')]
     public function an_idle_cutoff_that_cannot_be_read_is_refused_rather_than_dropped(): void
     {
-        // dropped, the request WIDENS: a caller hunting sagas stuck for an hour is served every
+        // dropped, the request widens: a caller hunting sagas stuck for an hour is served every
         // saga there is, in an envelope that never echoes what was applied
         try {
             $this->provide(['idle_for' => 'soon']);
             self::fail('a malformed cutoff must be refused');
         } catch (MalformedQueryParameter $e) {
             self::assertStringContainsString('"idle_for"', $e->getMessage());
-            // the refusal quotes the VALUE, not its type: a caller told its cutoff was a "string"
+            // the refusal quotes the value, not its type: a caller told its cutoff was a "string"
             // learns nothing about which of its parameters to fix
             self::assertStringContainsString('got "soon"', $e->getMessage());
         }
@@ -135,7 +136,7 @@ final class SagaListingProviderTest extends TestCase
     #[Test]
     public function an_absent_idle_cutoff_is_not_a_malformed_one(): void
     {
-        // the refusal is guarded on the parameter being PRESENT; without that guard every filterless
+        // the refusal is guarded on the parameter being present; without that guard every filterless
         // listing would be refused for a cutoff nobody asked for
         $this->provide(['type' => 'transfer']);
 
@@ -197,7 +198,7 @@ final class SagaListingProviderTest extends TestCase
     public function the_waived_filter_answers_to_each_form_a_query_string_carries(): void
     {
         // a checkbox sends `1`, a JSON client sends true, a hand-typed query sends `true`; a filter
-        // honouring one of the three drops the narrowing for the other two without a word
+        // honoring one of the three drops the narrowing for the other two without a word
         foreach ([true, 'true', '1'] as $asked) {
             $this->provide(['waived' => $asked]);
 
@@ -264,7 +265,7 @@ final class SagaListingProviderTest extends TestCase
     {
         $gate = new OpsActorGate(new OpsAuditLog(new NullLogger), null, allowAnonymousReads: $anonymous);
 
-        return new SagaListingProvider(new SagaInspectionGateway($connection, new WorkflowRegistry), $gate);
+        return new SagaListingProvider(new SagaInspectionGateway($connection, new WorkflowRegistry, new PlainMessageTypeMapper), $gate);
     }
 
     /**

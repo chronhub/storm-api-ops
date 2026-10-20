@@ -34,6 +34,7 @@ use Storm\Saga\Store\Inspection\SagaSnapshot;
 use Storm\Saga\Store\WorkflowId;
 use Storm\Saga\Store\WorkflowInstanceRow;
 use Storm\Saga\Store\WorkflowInstanceStore;
+use Storm\Saga\Testing\InMemory\PlainMessageTypeMapper;
 
 use function sprintf;
 
@@ -86,9 +87,9 @@ final class SagaPauseProcessorTest extends TestCase
 
         $this->assertSame([], $events->events); // no phantom SagaPaused for a verb that did nothing
         $this->assertCount(0, $log->applied());
-        // the refusal is AUDITED, not only unapplied: an operator reading the log must find why the
+        // the refusal is audited, not only unapplied: an operator reading the log must find why the
         // verb did nothing, and counting applied records alone cannot tell a refusal from a silence
-        $this->assertSame('refused: nothing to freeze', $log->records[0]['context']['outcome']);
+        $this->assertSame('refused: Nothing frozen: "payment/c-gone" is absent, settled, or already paused.', $log->records[0]['context']['outcome']);
         $this->assertSame('payment/c-gone', $log->records[0]['context']['subject']);
         // one line exactly: a refusal that also fell through the failure arm would lie twice
         $this->assertCount(1, $log->records);
@@ -97,7 +98,7 @@ final class SagaPauseProcessorTest extends TestCase
     #[Test]
     public function an_anonymous_freeze_is_refused_before_the_store_and_audited(): void
     {
-        // the gate runs BEFORE the store on purpose, so an anonymous caller learns nothing, not even
+        // the gate runs before the store, so an anonymous caller learns nothing, not even
         // whether the saga exists. The store double refuses to be touched at all, which is what
         // places the guard ahead of it rather than merely somewhere on the path
         $instances = $this->createMock(WorkflowInstanceStore::class);
@@ -148,7 +149,7 @@ final class SagaPauseProcessorTest extends TestCase
         }
 
         $this->assertSame([], $events->events); // nothing applied, so nothing announced
-        $this->assertSame('failed: The saga storage failed: the pause store went away', $log->records[0]['context']['outcome']);
+        $this->assertSame("failed: Storm\\Saga\\Exception\\SagaStorageFailure: The saga storage failed.\ncaused by: RuntimeException: the pause store went away", $log->records[0]['context']['outcome']);
     }
 
     #[Test]
@@ -194,7 +195,7 @@ final class SagaPauseProcessorTest extends TestCase
         }
 
         // audited for the same reason as its pause twin: document the refusal, not just the no-op
-        $this->assertSame('refused: nothing to lift', $log->records[0]['context']['outcome']);
+        $this->assertSame('refused: Nothing lifted: "payment/c-1" is absent or was not paused.', $log->records[0]['context']['outcome']);
     }
 
     #[Test]
@@ -231,7 +232,7 @@ final class SagaPauseProcessorTest extends TestCase
         $this->assertInstanceOf(SagaResumed::class, $liftedPresent->events[0]);
         $this->assertSame(1, $liftedPresent->events[0]->generation);
 
-        // both verbs again with the row GONE: the fallback is a literal, so only an absent row can
+        // both verbs again with the row gone: the fallback is a literal, so only an absent row can
         // pin it, and each verb carries its own
         $vanished = $this->createStub(WorkflowInstanceStore::class);
         $vanished->method('pauseInstance')->willReturn(true);
@@ -300,7 +301,7 @@ final class SagaPauseProcessorTest extends TestCase
         }
 
         $this->assertSame([], $events->events);
-        // no line at ALL, not merely none applied: a wiring fault mutates nothing, so a failed:
+        // no line at all, not merely none applied: a wiring fault mutates nothing, so a failed:
         // line here would blame an outage for a declaration bug
         $this->assertSame([], $log->records);
     }
@@ -356,7 +357,7 @@ final class SagaPauseProcessorTest extends TestCase
         return new SagaPauseProcessor(
             $instances,
             $instances,
-            new SagaInspectionGateway($connection, new WorkflowRegistry),
+            new SagaInspectionGateway($connection, new WorkflowRegistry, new PlainMessageTypeMapper),
             $audit,
             new OpsActorGate($allowAnonymous ? new OpsAuditLog(new NullLogger) : $audit, null, allowAnonymous: $allowAnonymous),
             $events,

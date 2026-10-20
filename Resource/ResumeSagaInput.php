@@ -7,8 +7,9 @@ namespace Storm\ApiOps\Resource;
 use Symfony\Component\Validator\Constraints as Assert;
 
 /**
- * The instance thaw's body: only the workflow type, naming WHICH saga under the correlation. The
- * resume needs no reason; lifting a freeze restores the normal regime rather than deciding a new
+ * The instance thaw's body: only the workflow type, naming which saga under the correlation.
+ *
+ * The resume needs no reason; lifting a freeze restores the normal regime rather than deciding a new
  * one.
  */
 final readonly class ResumeSagaInput

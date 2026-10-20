@@ -12,14 +12,16 @@ use Storm\ApiOps\State\OutboxFailedProvider;
 use Storm\ApiOps\State\PageWindow;
 
 /**
- * One dead-lettered outbox row, the HTTP twin of `storm:outbox:failed`: the id and global
- * `position` of the row, the event `type`, the `attempts` spent before it was given up on, the
- * `lastError` that killed it and the moment it `failedAt`.
+ * One dead-lettered outbox row, the HTTP twin of `storm:outbox:failed`:
  *
- * No payload, deliberately, and the console twin shows none either: what an operator triages a
- * dead-letter on is its cause and its age, never its content. The day a screen wants the payload,
- * `PersonalDataVeil` already covers that read on the events endpoints, so it is an extension of a
- * settled seam rather than a question to reopen.
+ * - The row id and its global `position`
+ * - The event `type`
+ * - The `attempts` spent before the row was given up on
+ * - The `lastError` that failed it, and the moment it `failedAt`
+ *
+ * The row carries no payload, as in the console twin: an operator triages a dead-letter on its cause
+ * and its age, never its content. A screen that wants the payload would extend a settled seam rather
+ * than reopen a question, since `PersonalDataVeil` already covers that read on the events endpoints.
  *
  * A keyset window over the relay's drain order, resumable through `after` on the row id, so a page
  * matches the order a requeue would republish in.
@@ -34,7 +36,7 @@ use Storm\ApiOps\State\PageWindow;
             paginationEnabled: false,
             provider: OutboxFailedProvider::class,
             parameters: [
-                // the zero minimum compiles to NO constraint, API Platform deriving bounds by truthiness; the
+                // the zero minimum compiles to no constraint, API Platform deriving bounds by truthiness; the
                 // real guard is PageWindow::afterPosition's clamp, pinned by its own test
                 'after' => new QueryParameter(schema: ['type' => 'integer', 'minimum' => 0], description: 'Resume strictly after this row id.'),
                 'limit' => new QueryParameter(schema: ['type' => 'integer', 'minimum' => 1, 'maximum' => PageWindow::MAX_LIMIT], description: 'Page size, capped server-side.'),

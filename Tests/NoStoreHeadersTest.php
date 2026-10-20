@@ -34,7 +34,7 @@ final class NoStoreHeadersTest extends TestCase
     #[Test]
     public function a_foreign_resource_or_bare_route_stays_untouched(): void
     {
-        // the defense is keyed on the OPERATION's resource class, never the path: an app resource
+        // the defense is keyed on the operation's resource class, never the path: an app resource
         // keeps whatever cache policy the app declared, and a non-API route is none of our business
         $foreign = $this->eventFor(new Get(class: stdClass::class));
         $foreign->getResponse()->headers->set('Cache-Control', 'public, max-age=60');

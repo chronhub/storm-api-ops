@@ -11,6 +11,7 @@ use PHPUnit\Framework\TestCase;
 use Storm\ApiOps\State\SagaCorrelationLineage;
 use Storm\Saga\Build\WorkflowRegistry;
 use Storm\Saga\Store\Inspection\SagaInspectionGateway;
+use Storm\Saga\Testing\InMemory\PlainMessageTypeMapper;
 
 /**
  * The adapter that keeps the coordination module's record on its own side of the seam.
@@ -27,7 +28,7 @@ final class SagaCorrelationLineageTest extends TestCase
     #[Group('adversarial')]
     public function only_the_child_id_s_cross_the_seam(): void
     {
-        // the whole reason this adapter exists: a consumer walking `$snapshot->children` would be
+        // this adapter exists because a consumer walking `$snapshot->children` would be
         // coupled to the coordination module's record for one string per row
         $children = $this->lineage([[
             'workflow_type' => 'settlement_leg', 'correlation_id' => 'corr-child', 'status' => 'done',
@@ -40,7 +41,7 @@ final class SagaCorrelationLineageTest extends TestCase
     #[Group('adversarial')]
     public function every_child_crosses_and_not_only_the_first(): void
     {
-        // a fan-out is the case this exists for, and a fixture with ONE child cannot tell a whole
+        // a fan-out is the case this exists for, and a fixture with one child cannot tell a whole
         // list from a truncated one: the widening would silently lose every sibling but the first
         $children = $this->lineage([
             ['workflow_type' => 'settlement_leg', 'correlation_id' => 'corr-a', 'status' => 'done'],
@@ -61,11 +62,11 @@ final class SagaCorrelationLineageTest extends TestCase
             'definition_version' => 1, 'retry_total' => 0, 'retries' => null, 'compensations' => null,
             'parent_workflow_type' => null, 'parent_correlation_id' => null, 'root_correlation_id' => null,
             'state_version' => 1, 'vars' => null, 'retimes' => 0,
-            'paused_at' => null, 'type_paused' => false, 'paused_reason' => null,
+            'paused_at' => null, 'type_paused' => false, 'paused_reason' => null, 'parked' => null,
         ]];
 
         // the gateway pays 1+2N reads: the instances, then the timers, outbox and children of each.
-        // The children are the LAST of the three, which is what this sequence answers.
+        // The children are the last of the three, which is what this sequence answers.
         $call = 0;
         $connection = $this->createStub(Connection::class);
         $connection->method('transactional')->willReturnCallback(static fn (callable $work): mixed => $work($connection));
@@ -82,6 +83,6 @@ final class SagaCorrelationLineageTest extends TestCase
             },
         );
 
-        return new SagaCorrelationLineage(new SagaInspectionGateway($connection, new WorkflowRegistry));
+        return new SagaCorrelationLineage(new SagaInspectionGateway($connection, new WorkflowRegistry, new PlainMessageTypeMapper));
     }
 }

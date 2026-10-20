@@ -33,7 +33,7 @@ final class CorrelationIdSetTest extends TestCase
     #[Group('adversarial')]
     public function an_id_that_reads_as_falsy_still_names_an_id(): void
     {
-        // dropping BLANKS is the intent, and filtering on truthiness is not that: "0" is a value the
+        // dropping blanks is the intent, and filtering on truthiness is not that: "0" is a value the
         // header can carry, and a set quietly one id short would be served as the complete trace
         $this->assertSame(['0'], CorrelationIdSet::parse('0'));
         $this->assertSame(['corr-9', '0'], CorrelationIdSet::parse('corr-9, 0 '));
@@ -55,17 +55,17 @@ final class CorrelationIdSetTest extends TestCase
     public function the_order_typed_is_the_order_queried(): void
     {
         // the store returns a trace in `sequence_no` order, so the set is not sorted on the way in;
-        // an operator reading the echoed form must recognise what they typed
+        // an operator reading the echoed form must recognize what they typed
         $this->assertSame(['b', 'a', 'c'], CorrelationIdSet::parse('b,a,c'));
     }
 
     #[Test]
     public function the_ceiling_admits_a_whole_one_hop_lineage(): void
     {
-        // the value is DERIVED and this pins the derivation: a parent plus every child one saga may
+        // the value is derived and this pins the derivation: a parent plus every child one saga may
         // spawn, so a lineage the write side can legitimately mint is never refused by the surface
-        // that traces it. Pinned rather than computed on purpose: a coordination-side ceiling that
-        // moved would otherwise widen an HTTP predicate and an audit subject with no decision taken
+        // that traces it. Pinned rather than computed, so a coordination-side ceiling that moved
+        // cannot widen an HTTP predicate and an audit subject with no decision taken
         $this->assertSame(ChildSpawner::MAX_CHILDREN + 1, CorrelationIdSet::MAX_IDS);
     }
 

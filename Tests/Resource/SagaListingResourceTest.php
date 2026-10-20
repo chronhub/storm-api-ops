@@ -18,7 +18,7 @@ use Storm\Saga\Store\Inspection\SagaSummarySnapshot;
  * A transposed pair of the ten unchecked ones, or a field added upstream and never mapped, reads as a
  * complete row and answers with somebody else's value.
  *
- * Asserted over the PROPERTIES rather than a written list, so a field added to either side is
+ * Asserted over the properties rather than a written list, so a field added to either side is
  * covered without anyone remembering; and every seeded value is distinct, since two fields carrying
  * the same value make a transposition invisible.
  */

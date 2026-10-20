@@ -20,10 +20,12 @@ use function array_map;
 use function is_string;
 
 /**
- * Saga instances by correlation, the HTTP twin of `storm:saga:inspect`, over the same
- * read-only gateway. An unknown correlation answers the empty collection: the console pins
- * FAILURE there because exit codes are a pipeline's only voice, but an HTTP collection shows
- * its emptiness; each channel's own idiom.
+ * Saga instances by correlation, the HTTP twin of `storm:saga:inspect`, over the same read-only
+ * gateway.
+ *
+ * An unknown correlation answers the empty collection: the console pins `FAILURE` there because exit
+ * codes are a pipeline's only voice, but an HTTP collection shows its emptiness, each channel in its
+ * own idiom.
  *
  * @implements ProviderInterface<SagaResource>
  */
@@ -49,14 +51,14 @@ final readonly class SagasProvider implements ProviderInterface
     #[Override]
     public function provide(Operation $operation, array $uriVariables = [], array $context = []): array
     {
-        $this->gate->assertOwnedIdentityForRead('saga.read', (string) ($uriVariables['correlationId'] ?? '*'));
+        $this->gate->assertOwnedIdentityForRead('saga.read', OpsRoute::string($uriVariables, 'correlationId', '*'));
 
         /** @var array<string, mixed> $filters */
         $filters = $context['filters'] ?? [];
         $type = $filters['type'] ?? null;
 
         $sagas = $this->gateway->inspect(
-            (string) ($uriVariables['correlationId'] ?? ''),
+            OpsRoute::string($uriVariables, 'correlationId'),
             is_string($type) && $type !== '' ? $type : null,
         );
 

@@ -38,7 +38,7 @@ final class BacklogProviderTest extends TestCase
     public function only_the_backlog_families_are_served(): void
     {
         // the endpoint answers "what is waiting"; serving every family would make it a second
-        // metrics endpoint wearing another content type, which is the decision it exists not to reopen
+        // metrics endpoint under another content type, which is the decision it exists not to reopen
         $page = $this->provider([$this->collector([
             MetricFamily::gauge('storm_outbox_events', 'depth', [new MetricSample(['status' => 'pending'], 12)]),
             MetricFamily::gauge('storm_saga_instances', 'not a backlog number', [new MetricSample([], 3)]),
@@ -51,7 +51,7 @@ final class BacklogProviderTest extends TestCase
     #[Group('adversarial')]
     public function a_backlog_family_sitting_after_a_foreign_one_is_still_served(): void
     {
-        // the ordering case a happy-path fixture hides: a selection that STOPS at the first
+        // the ordering case a happy-path fixture hides: a selection that stops at the first
         // non-backlog family reads identically when the wanted rows happen to come first
         $page = $this->provider([$this->collector([
             MetricFamily::gauge('storm_saga_instances', 'not a backlog number', [new MetricSample([], 3)]),
@@ -73,7 +73,7 @@ final class BacklogProviderTest extends TestCase
     #[Test]
     public function a_collector_failing_more_than_once_is_named_once(): void
     {
-        // an operator acts on WHICH block is missing; two failures of one collector are still one
+        // an operator acts on which block is missing; two failures of one collector are still one
         // absent block, and a repeated name would read as two
         $page = $this->provider([new ThrowingCollector, new ThrowingCollector(new LogicException('a second failure'))])->provide(new Get);
 
@@ -96,8 +96,8 @@ final class BacklogProviderTest extends TestCase
     #[Group('adversarial')]
     public function a_collector_that_threw_is_named_rather_than_read_as_an_empty_queue(): void
     {
-        // the whole reason `degraded` exists: a block missing because its collector threw looks
-        // exactly like a queue that is empty, and an operator would act on the wrong one
+        // `degraded` exists for this: a block missing after its collector threw looks exactly like
+        // an empty queue, and an operator would act on the wrong one
         $page = $this->provider([
             $this->collector([MetricFamily::gauge('storm_inbox_rows', 'rows', [new MetricSample([], 7)])]),
             new ThrowingCollector,

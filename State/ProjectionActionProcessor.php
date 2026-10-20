@@ -25,18 +25,24 @@ use Storm\Projector\Exception\UnsupportedProjection;
 use Storm\Projector\Management\ProjectionManagement;
 use Storm\Projector\Store\ProjectionLifecycleStore;
 use Storm\Projector\Store\ProjectionStatus;
+use Storm\Support\Error\AuditDigest;
 use Symfony\Component\HttpFoundation\Response;
 use Throwable;
+use UnhandledMatchError;
 
 /**
  * The projection status controls over HTTP, the twins of the console marker commands and of
- * `storm:projection:retry` / `storm:projection:reset`, over the SAME single sources: the transition
- * predicates on `ProjectionStatus` for pause/resume/stop, and `ProjectionManagement`'s own guards
- * for retry/reset. Each operation declares its verb in `storm_ops_action`; a successful mutation
- * answers the projection's fresh truth. Reset without a checkpoint initializes and clears output,
- * then answers 204 without inventing a stored projection state.
+ * `storm:projection:retry` and `storm:projection:reset`, over the same single sources.
  *
- * Every action lands in the audit log, refused or applied, before the refusal propagates.
+ * The transition predicates on `ProjectionStatus` serve pause, resume and stop, and
+ * `ProjectionManagement`'s own guards serve retry and reset. Each operation declares its verb in
+ * `storm_ops_action`; a successful mutation answers the projection's fresh truth. Reset without a
+ * checkpoint initializes and clears output, then answers 204 without inventing a stored projection
+ * state.
+ *
+ * Every action lands in the audit log as refused, failed or applied before its outcome propagates,
+ * except a fault of the resource declaration and a `LogicException` raised before any write: neither
+ * mutates anything, and neither leaves a line.
  *
  * @implements ProcessorInterface<PauseProjectionInput|mixed, ProjectionResource|Response>
  */
@@ -62,19 +68,30 @@ final readonly class ProjectionActionProcessor implements ProcessorInterface
      * @throws ProjectionBusy when a worker holds a live lease against retry/reset, a 409
      * @throws ProjectionNotFailed when retry aims at a projection that did not fail, a 409
      * @throws UnsupportedProjection when reset aims at a projection with no output to clear, a 422
+     * @throws LogicException when the operation declares an action this processor does not know, a
+     *                        wiring fault in the resource declaration, or when a store guard refuses
+     *                        before any write, such as an empty compare-and-set
      * @throws JsonException when a stored row is malformed
      * @throws Throwable on a storage failure of the mutation or the fresh read
      */
     #[Override]
     public function process(mixed $data, Operation $operation, array $uriVariables = [], array $context = []): ProjectionResource|Response
     {
-        // @infection-ignore-all; equivalent: the cast serves the ANALYSER, the array being typed mixed; the router only ever supplies strings, so dropping it changes no runtime value
-        $name = (string) ($uriVariables['name'] ?? '');
-        // @infection-ignore-all; equivalent: the cast serves the ANALYSER, the array being typed mixed; the router only ever supplies strings, so dropping it changes no runtime value
-        $action = (string) ($operation->getExtraProperties()['storm_ops_action'] ?? '');
+        $name = OpsRoute::string($uriVariables, 'name');
+        $action = OpsRoute::string($operation->getExtraProperties(), 'storm_ops_action');
 
-        // before the row lookup on purpose: an anonymous caller learns nothing, not even existence
+        // before the row lookup: an anonymous caller learns nothing, not even existence
         $this->gate->assertOwnedIdentity($action, $name);
+
+        // the verb is judged before the row lookup too, as the saga twins judge theirs before any read:
+        // a verb no operation declares is a fault of the resource declaration, never a caller's 404
+        match ($action) {
+            'pause', 'resume', 'stop', 'retry', 'reset' => null,
+            default => throw new LogicException(sprintf(
+                'Unknown ops action "%s": the operation\'s storm_ops_action extra property names no known verb — a resource declaration fault, not a missing projection.',
+                $action,
+            )),
+        };
 
         $row = $this->store->findRow($name);
         if ($row === null && $action !== 'reset') {
@@ -89,12 +106,20 @@ final readonly class ProjectionActionProcessor implements ProcessorInterface
             } elseif ($row !== null) {
                 $this->apply($action, $name, $row->status, $data);
             }
+        } catch (ProjectionTransitionRefused|UnknownProjection|ProjectionBusy|ProjectionNotFailed|UnsupportedProjection $e) {
+            // the named declines the resource answers with a 4xx, the module's own and the projector's;
+            // caught ahead of the wiring arm, since `UnsupportedProjection` is a `LogicException`
+            $this->audit->record($action, $name, 'refused: '.$e->getMessage());
+
+            throw $e;
+        } catch (LogicException $e) {
+            // a code fault raised before any write, such as the store's guard against an empty
+            // compare-and-set: nothing mutated, and it leaves no line
+            throw $e;
         } catch (Throwable $e) {
-            // an infrastructure outage is a FAILURE, never a refusal: the audit line must not
-            // read as an operator's verb declined when the store simply went away; every named
-            // decline, the module's own, the wiring faults and the projector's, stays a refusal
-            $verdict = $e instanceof Exception ? 'failed: ' : 'refused: ';
-            $this->audit->record($action, $name, $verdict.$e->getMessage());
+            // an outage or an output that could not be cleared is a failure, never a refusal: the
+            // audit line must not read as an operator's verb declined
+            $this->audit->record($action, $name, 'failed: '.AuditDigest::digest($e));
 
             throw $e;
         }
@@ -108,8 +133,8 @@ final readonly class ProjectionActionProcessor implements ProcessorInterface
         }
 
         if ($fresh === null) {
-            // the verb applied and a retire won the read-back: answering the PRE-mutation row as
-            // fresh truth is the lie this surface refuses everywhere else
+            // the verb applied and a retire won the read-back: answering the pre-mutation row as fresh
+            // truth would be the false answer this surface refuses everywhere else
             throw ProjectionNotFound::named($name);
         }
 
@@ -117,51 +142,77 @@ final readonly class ProjectionActionProcessor implements ProcessorInterface
     }
 
     /**
-     * @throws LogicException when the operation declares an action this switch does not know, a
-     *                        wiring fault in the resource declaration, never a caller's 404
-     * @throws Throwable propagated from the store / management mutation
+     * Runs one of the four verbs `process()` has already judged; reset never reaches here.
+     *
+     * The match has no default arm: a verb the judge admits and this match forgets throws, and
+     * `process()` audits the throw as failed, where a silent fall-through would answer applied over an
+     * unmutated row.
+     *
+     * @throws UnhandledMatchError when `process()` admits a verb this match has no arm for
+     * @throws Throwable propagated from the store or management mutation
      */
     private function apply(string $action, string $name, ProjectionStatus $status, mixed $data): void
     {
-        switch ($action) {
-            case 'pause':
-                // @infection-ignore-all; equivalent: negating a statement-position `expr || throw` discards the negated value, so every path, throw included, is byte-identical
-                $status->canPause() || throw ProjectionTransitionRefused::of('pause', $status);
-                // @infection-ignore-all; equivalent: same statement-position `expr || throw` shape, the negation has no observable value
-                $this->store->pause($name, $data instanceof PauseProjectionInput ? $data->forSeconds : null, ...self::statesWhere(static fn (ProjectionStatus $s): bool => $s->canPause()))
-                    || throw ProjectionTransitionRefused::raced('pause', $name);
-                break;
-            case 'resume':
-                $status->canResume() || throw ProjectionTransitionRefused::of('resume', $status);
-                $this->store->resume($name, ...self::statesWhere(static fn (ProjectionStatus $s): bool => $s->canResume()))
-                    || throw ProjectionTransitionRefused::raced('resume', $name);
-                break;
-            case 'stop':
-                $status->canStop() || throw ProjectionTransitionRefused::of('stop', $status);
-                $this->stop($name);
-                break;
-            case 'retry':
-                $this->management->retry($name);
-                break;
-            default:
-                throw new LogicException(sprintf(
-                    'Unknown ops action "%s": the operation\'s storm_ops_action extra property names no known verb — a resource declaration fault, not a missing projection.',
-                    $action,
-                ));
-        }
+        match ($action) {
+            'pause' => $this->pause($name, $status, $data instanceof PauseProjectionInput ? $data->forSeconds : null),
+            'resume' => $this->resume($name, $status),
+            'stop' => $this->stop($name, $status),
+            'retry' => $this->management->retry($name),
+        };
+    }
+
+    /**
+     * @throws ProjectionTransitionRefused when the status cannot pause, or the row left the pausable
+     *                                     states mid-request
+     * @throws Exception on a DBAL failure of the status mutation
+     */
+    private function pause(string $name, ProjectionStatus $status, ?int $forSeconds): void
+    {
+        // equivalent: negating a statement-position `expr || throw` discards the negated value, so
+        // every path, throw included, is byte-identical
+        // @infection-ignore-all
+        $status->canPause() || throw ProjectionTransitionRefused::of('pause', $status);
+        // equivalent: same statement-position `expr || throw` shape, the negation has
+        // no observable value
+        // @infection-ignore-all
+        $this->store->pause($name, $forSeconds, ...self::statesWhere(static fn (ProjectionStatus $s): bool => $s->canPause()))
+            || throw ProjectionTransitionRefused::raced('pause', $name);
+    }
+
+    /**
+     * @throws ProjectionTransitionRefused when the status cannot resume, or the row left the resumable
+     *                                     states mid-request
+     * @throws Exception on a DBAL failure of the status mutation
+     */
+    private function resume(string $name, ProjectionStatus $status): void
+    {
+        // equivalent: as in pause(), negating a statement-position `expr || throw` discards the
+        // negated value, so every path, throw included, is byte-identical
+        // @infection-ignore-all
+        $status->canResume() || throw ProjectionTransitionRefused::of('resume', $status);
+        // equivalent: same statement-position `expr || throw` shape, the negation has
+        // no observable value
+        // @infection-ignore-all
+        $this->store->resume($name, ...self::statesWhere(static fn (ProjectionStatus $s): bool => $s->canResume()))
+            || throw ProjectionTransitionRefused::raced('resume', $name);
     }
 
     /**
      * The console stop nuance, kept: with no live worker there is nothing to wind down, so the row
      * goes straight to idle; a live worker sees `stopping` and exits at its next heartbeat. Both the
-     * liveness question and the write happen in ONE statement, so a worker failing in between cannot
+     * liveness question and the write happen in one statement, so a worker failing in between cannot
      * have its `failed` overwritten by this command's stale decision.
      *
-     * @throws ProjectionTransitionRefused when the row left the stoppable states mid-request
+     * @throws ProjectionTransitionRefused when the status cannot stop, or the row left the stoppable
+     *                                     states mid-request
      * @throws Exception on a DBAL failure of the status mutation
      */
-    private function stop(string $name): void
+    private function stop(string $name, ProjectionStatus $status): void
     {
+        // equivalent: as in pause(), negating a statement-position `expr || throw` discards the
+        // negated value, so every path, throw included, is byte-identical
+        // @infection-ignore-all
+        $status->canStop() || throw ProjectionTransitionRefused::of('stop', $status);
         $landed = $this->store->requestStop($name, ...self::statesWhere(static fn (ProjectionStatus $s): bool => $s->canStop()));
 
         if ($landed === null) {
@@ -170,7 +221,7 @@ final readonly class ProjectionActionProcessor implements ProcessorInterface
     }
 
     /**
-     * The statuses a predicate accepts, so the compare-and-set carries the SAME state machine the
+     * The statuses a predicate accepts, so the compare-and-set carries the same state machine the
      * pre-read validated with: derived, never a second hand-kept list that could drift from it.
      *
      * @param  callable(ProjectionStatus): bool  $predicate
@@ -178,7 +229,9 @@ final readonly class ProjectionActionProcessor implements ProcessorInterface
      */
     private static function statesWhere(callable $predicate): array
     {
-        // @infection-ignore-all; equivalent: the reindex serves the declared list type only; the sole call sites spread the result, and a spread is insensitive to keys
+        // equivalent: the reindex serves the declared list type only; the sole call sites spread the result,
+        // and a spread is insensitive to keys
+        // @infection-ignore-all
         return array_filter(ProjectionStatus::cases(), $predicate)
             |> array_values(...);
     }

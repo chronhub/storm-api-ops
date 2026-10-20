@@ -15,9 +15,9 @@ use Storm\ApiOps\State\StreamsProvider;
  * One stream of the event store, as the ops directory sees it: name and last committed version,
  * read from the stream heads, never a scan of `event_store` itself.
  *
- * The collection is windowed, not paginated: `stream_heads` holds one row per stream and one
- * aggregate IS one stream, so the population is as large as the store's. Resume by passing the
- * last stream name seen as `after`; narrow to one lane with `category`.
+ * The collection is windowed, not paginated: `stream_heads` holds one row per stream and one aggregate
+ * is one stream, so the population is as large as the store's. Resume by passing the last stream name
+ * seen as `after`; narrow to one lane with `category`.
  */
 #[ApiResource(
     shortName: 'StormStream',

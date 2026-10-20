@@ -32,27 +32,33 @@ use function array_intersect_key;
 use function array_map;
 
 /**
- * One saga instance in introspection, the HTTP twin of `storm:saga:inspect`: scalar state plus
- * its armed timers, the commands it issued, and the compensation log, THE forensic record of a
- * halted saga. A collection by correlation on purpose: the gateway preserves the rare legacy
- * cross-saga correlation as one snapshot per workflow type, never collapsed.
+ * One saga instance in introspection, the HTTP twin of `storm:saga:inspect`: scalar state plus its
+ * armed timers, the commands it issued, the crossing a family gate parked, and the compensation log,
+ * the forensic record of a halted saga.
  *
- * The nested records carry the snapshots' own machine shape with snake_case wire keys, the same
- * contract the console serves with `--json`, so a script reads one format wherever it looks.
+ * A collection by correlation, because the gateway preserves the rare legacy cross-saga correlation as
+ * one snapshot per workflow type, never collapsed. The nested records carry the snapshots' own machine
+ * shape with snake_case wire keys, the same contract the console serves with `--json`, so a script
+ * reads one format wherever it looks.
  *
- * Four POST verbs ride the same resource. `cancel` is the stop button: halt the saga where it sits.
- * `redrive` is the repair: send one dead-lettered command back into flight and leave the saga alone.
- * Reach for the repair FIRST, since a command usually dies of a cause that is not the saga's.
- * `pause` and `resume` are the reversible pair: freeze this instance so no NEXT step executes and
- * no pending command leaves its outbox; a step already in flight completes, the status stays
- * untouched; then lift the freeze.
+ * Four `POST` verbs ride the same resource:
  *
- * Authorization uses the app-owned `OpsAuthorization` policy and method-scoped `access_control` on the ops zone
- * matching `^/(api/)?_storm`, where the `(api/)?` covers the bridge's `/api` mount; beneath it,
- * {@see OpsActorGate} requires an identity and an explicit permission, refusing either absence with a 403. Every verb refuses with a
- * 409 that names what declined: one of four read-back causes for the cancel, one of four guards for
- * the redrive, nothing to freeze or nothing to lift for the pair. The cancel and the redrive carry
- * the same `force` contract, which owns a risk rather than skipping a check.
+ * - `cancel` halts the saga where it sits
+ *
+ * - `redrive` is the repair: it sends one dead-lettered command back into flight and leaves the saga
+ *   alone. Reach for it first, since a command usually dies of a cause that is not the saga's
+ *
+ * - `pause` and `resume` are the reversible pair: freeze this instance so no next step executes and no
+ *   pending command leaves its outbox, a step already in flight completing and the status staying
+ *   untouched; then lift the freeze
+ *
+ * Authorization uses the app-owned `OpsAuthorization` policy and method-scoped `access_control` on the
+ * ops zone matching `^/(api/)?_storm`, where the `(api/)?` covers the bridge's `/api` mount; beneath
+ * it, {@see OpsActorGate} requires an identity and an explicit permission, refusing either absence
+ * with a 403. Every verb refuses with a 409 that names what declined: one of four read-back causes for
+ * the cancel, one of five guards for the redrive, nothing to freeze or nothing to lift for the pair.
+ * The cancel and the redrive carry the same `force` contract, which owns a risk rather than skipping a
+ * check.
  */
 #[ApiResource(
     shortName: 'StormSaga',
@@ -115,24 +121,27 @@ use function array_map;
 final readonly class SagaResource
 {
     /**
-     * The nested wire keys this surface consciously serves, one allowlist per snapshot shape: the
-     * snapshots belong to the Saga module, and a key IT adds must be ADMITTED here to reach this
-     * public HTTP surface, never leak through a pass-through `toArray()`; the resource test holds
-     * each list against the snapshot's real keys, so an upstream addition fails a build instead of
-     * shipping silently.
+     * The nested wire keys this surface serves, one allowlist per snapshot shape: the snapshots belong to
+     * the Saga module, and a key it adds must be admitted here to reach this public HTTP surface, never
+     * leak through a pass-through `toArray()`. The resource test holds each list against the snapshot's
+     * real keys, so an upstream addition fails a build instead of shipping silently.
      */
     public const array COMPENSATION_KEYS = ['step', 'status', 'confirmed', 'degraded', 'reason', 'at'];
 
     public const array TIMER_KEYS = ['id', 'kind', 'state_key', 'fire_at', 'claimed_at', 'attempts', 'parked_at', 'last_error'];
 
-    public const array OUTBOX_KEYS = ['status', 'command', 'bus', 'attempts', 'created_at', 'last_error', 'issued_from_state', 'issued_at_version', 'generation', 'message_id', 'evidence', 'effect_group'];
+    public const array OUTBOX_KEYS = ['status', 'command', 'bus', 'attempts', 'created_at', 'last_error', 'issued_from_state', 'issued_at_version', 'generation', 'message_id', 'evidence', 'effect_group', 'readable'];
 
     public const array CHILD_KEYS = ['workflow_type', 'correlation_id', 'status'];
 
+    public const array PARKED_KEYS = ['state', 'type', 'cause', 'readable'];
+
     /**
-     * @param  array<string, array{n: int, since: string|null}>  $retries  state key to visit ledger: attempt
-     *                                                                     count plus the visit window's opening
-     *                                                                     instant, null for a legacy row
+     * @param  array<string, array{
+     *     n: int,
+     *     since: string|null
+     * }>  $retries  each state key's visit ledger: the attempt count and the visit window's opening
+     *               instant, null for a legacy row
      * @param  list<array<string, mixed>>  $compensations  the rollback log, in completion order
      * @param  list<array<string, mixed>>  $timers
      * @param  list<array<string, mixed>>  $outbox
@@ -152,29 +161,38 @@ final readonly class SagaResource
         public ?string $parentCorrelationId = null,
         public ?string $rootCorrelationId = null,
         public array $children = [],
-        // @infection-ignore-all; equivalent: the named factory below is the only construction path
+        // equivalent: the named factory below is the only construction path
         // in this package and always passes this, so the default stands for a consumer building the
         // resource by hand and no test can observe it
+        // @infection-ignore-all
         public int $retimes = 0,
-        /** The operator freeze stamp; null when executable. A paused saga must SAY so wherever it is read. */
+        /** The operator freeze stamp; null when executable. A paused saga must say so wherever it is read. */
         public ?string $pausedAt = null,
         public ?string $pausedReason = null,
         /**
-         * Whether the whole workflow TYPE is frozen, which no instance stamp carries: that freeze
+         * Whether the whole workflow type is frozen, which no instance stamp carries: that freeze
          * lives in `workflow_pauses` alone and gates births as well as steps. A saga held by it must
-         * SAY so, exactly like one held by its own stamp, and lifting one does not lift the other.
+         * say so, exactly like one held by its own stamp, and lifting one does not lift the other.
          */
         public bool $typePaused = false,
         /** The staleness clock, the first question a halted saga raises. */
         public ?string $updatedAt = null,
-        /** The run counter the sibling history endpoint asks the caller to supply; readable HERE. */
-        // @infection-ignore-all; equivalent: the named factory below is the only construction path in this package and always passes this, so the default stands for a consumer building the resource by hand and no test can observe it
+        /** The run counter the sibling history endpoint asks the caller to supply; readable here. */
+        // equivalent: the named factory below is the only construction path in this package and always passes
+        // this, so the default stands for a consumer building the resource by hand and no test can observe it
+        // @infection-ignore-all
         public int $generation = 0,
-        // @infection-ignore-all; equivalent: the named factory below is the only construction path in this package and always passes this, so the default stands for a consumer building the resource by hand and no test can observe it
+        // equivalent: the named factory below is the only construction path in this package and always passes
+        // this, so the default stands for a consumer building the resource by hand and no test can observe it
+        // @infection-ignore-all
         public int $definitionVersion = 1,
-        // @infection-ignore-all; equivalent: the named factory below is the only construction path in this package and always passes this, so the default stands for a consumer building the resource by hand and no test can observe it
+        // equivalent: the named factory below is the only construction path in this package and always passes
+        // this, so the default stands for a consumer building the resource by hand and no test can observe it
+        // @infection-ignore-all
         public int $stateVersion = 1,
-        // @infection-ignore-all; equivalent: the named factory below is the only construction path in this package and always passes this, so the default stands for a consumer building the resource by hand and no test can observe it
+        // equivalent: the named factory below is the only construction path in this package and always passes
+        // this, so the default stands for a consumer building the resource by hand and no test can observe it
+        // @infection-ignore-all
         public int $retryTotal = 0,
         public ?string $waivedAt = null,
         /**
@@ -185,6 +203,13 @@ final readonly class SagaResource
          */
         public array $exposed = [],
         public ?string $globalDeadlineConsumedAt = null,
+        /**
+         * The crossing a family gate parked, null when none is held; `readable` false names a park no
+         * member poke spends until the map reads its type again.
+         *
+         * @var array<string, mixed>|null
+         */
+        public ?array $parked = null,
     ) {}
 
     public static function fromSnapshot(SagaSnapshot $saga): self
@@ -215,6 +240,7 @@ final readonly class SagaResource
             waivedAt: $saga->waivedAt,
             globalDeadlineConsumedAt: $saga->globalDeadlineConsumedAt,
             exposed: $saga->exposed,
+            parked: $saga->parked !== null ? self::pick($saga->parked->toArray(), self::PARKED_KEYS) : null,
         );
     }
 

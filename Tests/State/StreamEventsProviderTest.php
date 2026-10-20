@@ -64,7 +64,7 @@ final class StreamEventsProviderTest extends TestCase
     #[Test]
     public function a_bare_stream_path_scopes_the_read_to_that_exact_stream(): void
     {
-        // the refusal paths above prove what does NOT reach the reader; this proves what does. The
+        // the refusal paths above prove what does not reach the reader; this proves what does. The
         // scope is private to the filter, so it is observed where it lands, in the predicate the
         // filter stamps on the query.
         $qb = $this->captureFilter(['stream' => 'account']);
@@ -79,7 +79,7 @@ final class StreamEventsProviderTest extends TestCase
     public function a_qualified_path_narrows_the_read_to_the_one_aggregate_stream(): void
     {
         // category plus id is the aggregate-history window, and it must narrow: the same category
-        // predicate PLUS the exact stream, or the window would answer with the neighbours' events.
+        // predicate plus the exact stream, or the window would answer with the neighbors' events.
         $qb = $this->captureFilter(['category' => 'account', 'id' => '1']);
 
         self::assertStringContainsString('e.stream = :feedStream', $qb->getSQL());
@@ -92,7 +92,7 @@ final class StreamEventsProviderTest extends TestCase
     public function the_callers_window_reaches_the_query_under_the_server_cap(): void
     {
         // the caps are only worth having if they arrive: a window computed and never stamped, or
-        // filters read from the wrong place, both leave the read unbounded while the code LOOKS like
+        // filters read from the wrong place, both leave the read unbounded while the code looks like
         // it bounds it. Asserted where it lands, on the query the reader would run.
         $qb = $this->captureFilter(['stream' => 'account'], ['filters' => ['after' => '7', 'limit' => '5']]);
 
@@ -112,7 +112,7 @@ final class StreamEventsProviderTest extends TestCase
     #[Group('adversarial')]
     public function every_event_of_the_page_is_handed_back_not_just_the_first(): void
     {
-        // a window that answers with ONE event when the reader yielded several is a page that lies
+        // a window that answers with one event when the reader yielded several is a page that lies
         // about the stream, and the caller has no way to tell: the positions it never saw simply
         // look like they do not exist
         $reader = $this->createStub(StreamReader::class);
@@ -208,7 +208,7 @@ final class StreamEventsProviderTest extends TestCase
     public function an_anonymous_read_never_reaches_the_reader_and_names_its_subject(): void
     {
         // the gate stands ahead of the store, like every mutation's: an unnamed caller learns
-        // nothing, not even whether the stream exists, and the refusal NAMES what was asked
+        // nothing, not even whether the stream exists, and the refusal names what was asked
         $reader = $this->createMock(StreamReader::class);
         $reader->expects($this->never())->method('retrieveByFilter');
 
@@ -265,6 +265,7 @@ final class StreamEventsProviderTest extends TestCase
         // whose own suite holds the refusal
         $audit = new OpsAuditLog(new NullLogger);
 
-        return new StreamEventsProvider($reader, new OpsActorGate(new OpsAuditLog(new NullLogger), null, allowAnonymous: false, allowAnonymousReads: true), $audit); // @phpstan-ignore argument.type (the anonymous reader double)
+        // @phpstan-ignore argument.type (the anonymous reader double)
+        return new StreamEventsProvider($reader, new OpsActorGate(new OpsAuditLog(new NullLogger), null, allowAnonymous: false, allowAnonymousReads: true), $audit);
     }
 }

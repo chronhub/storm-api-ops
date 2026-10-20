@@ -21,10 +21,11 @@ use function array_map;
 use function is_string;
 
 /**
- * Projections as an ops collection or item, the same `ProjectionStore` row the console status
- * command renders, enriched per row with the waiter's lag / at-head answers and the lease's live
- * truth. Small N by construction, a declared population, so the per-row reads are the honest price
- * of a truthful snapshot, not an N+1 to engineer away.
+ * Projections as an ops collection or item, the same `ProjectionStore` row the console status command
+ * renders, enriched per row with the waiter's lag and at-head answers and the lease's live truth.
+ *
+ * Small N by construction, a declared population, so the per-row reads are the cost of a truthful
+ * snapshot, not an N+1 to engineer away.
  *
  * @implements ProviderInterface<ProjectionResource>
  */

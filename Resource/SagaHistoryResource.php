@@ -14,23 +14,23 @@ use Storm\Telemetry\History\GenerationOutOfRange;
 use Storm\Telemetry\History\WorkflowHistoryStore;
 
 /**
- * One saga's recorded timeline, the HTTP twin of `storm:telemetry:history`: every `Saga*`
- * announcement that led to the state {@see SagaResource} shows. The instance row holds the present;
- * this holds how it got there.
+ * One saga's recorded timeline, the HTTP twin of `storm:telemetry:history`: every `Saga*` announcement
+ * that led to the state {@see SagaResource} shows.
  *
- * Served in the saga's own URI space rather than under a telemetry path, because that is where an
- * operator is when the question arises: they came from `/_storm/sagas`, they have a correlation,
- * and the next thing they want is its life. The rows come from Telemetry's `workflow_history`, which
- * this package reads across the seam the design nominated it to be.
+ * The instance row holds the present; this holds how it got there. It is served in the saga's own URI
+ * space rather than under a telemetry path, because that is where an operator is when the question
+ * arises: they came from `/_storm/sagas`, they have a correlation, and the next thing they want is its
+ * life. The rows come from Telemetry's `workflow_history`, which this package reads across the seam
+ * the design nominated it to be.
  *
- * An ENVELOPE, not a bare collection, deliberately: the store's answer is more than its rows, and a
- * capped window that reads as a complete one is the lie an operator cannot recover from, so
+ * The answer is an envelope rather than a bare collection: the store's answer is more than its rows,
+ * and a capped window that reads as complete is a false answer an operator cannot recover from, so
  * `truncated` and `limit` ride along, and `availability` names what an empty `records` means. Saga
- * history is opt-in three times over, and each miss produces a DIFFERENT empty:
+ * history is opt-in three times over, and each miss produces a different empty:
  *
- * - The package must be installed;
- * - `storm:telemetry:install` must have been run;
- * - The `SagaHistorySink` alias must point at the table sink.
+ * - The package must be installed
+ * - `storm:telemetry:install` must have been run
+ * - The `SagaHistorySink` alias must point at the table sink
  *
  * Ordered by the saga's own announce time, not by arrival, so the order survives the async sink.
  */

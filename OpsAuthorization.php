@@ -17,14 +17,14 @@ use Throwable;
 interface OpsAuthorization
 {
     /**
-     * Allow this actor to inspect the requested subject.
+     * Whether this actor may inspect the requested subject.
      *
      * @throws Throwable when the application's permission backend cannot answer
      */
     public function canRead(Actor $actor, string $action, string $subject): bool;
 
     /**
-     * Allow this actor to perform the requested mutation.
+     * Whether this actor may perform the requested mutation.
      *
      * @throws Throwable when the application's permission backend cannot answer
      */

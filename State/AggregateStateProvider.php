@@ -32,11 +32,12 @@ use Throwable;
 
 /**
  * One aggregate for introspection: resolve the category through the app's own `storm.aggregates`
- * declaration, then pay only for what the answer needs. A snapshotable aggregate reconstitutes
- * through the real repository, snapshot-accelerated, and answers its `toSnapshot()` state. A
- * non-snapshotable one exposes no state at all, so no replay runs: existence and version come
- * from the stream head, one indexed row, the same watermark the OCC append maintains. An HTTP GET
- * must never fold an unbounded history just to say `state: null`.
+ * declaration, then pay only for what the answer needs.
+ *
+ * A snapshotable aggregate reconstitutes through the real repository, snapshot-accelerated, and
+ * answers its `toSnapshot()` state. A non-snapshotable one exposes no state at all, so no replay runs:
+ * existence and version come from the stream head, one indexed row, the same watermark the OCC append
+ * maintains. An HTTP `GET` must never fold an unbounded history just to say `state: null`.
  *
  * Two refusals stand before the snapshotable fold, both 422 and both decided on one indexed row: a
  * head past the replay ceiling, and a stream carrying a `#[Personal]` event, whose fold would render
@@ -64,11 +65,12 @@ use Throwable;
 final readonly class AggregateStateProvider implements ProviderInterface
 {
     /**
-     * The snapshotable fold's ceiling, on the stream head version: the head bounds the WORST
-     * replay, a stale or absent snapshot, while a fresh snapshot shortens the real one; a
-     * generous approximation that keeps the one uncapped read off this HTTP surface. No `storm:*`
-     * verb folds an aggregate, so the refusal points at the history the fold is made of rather than
-     * at a command that does not exist.
+     * The snapshotable fold's ceiling, on the stream head version.
+     *
+     * The head bounds the worst replay, a stale or absent snapshot, while a fresh snapshot shortens the
+     * real one: a generous approximation that keeps the one uncapped read off this HTTP surface. No
+     * `storm:*` verb folds an aggregate, so the refusal points at the history the fold is made of rather
+     * than at a command that does not exist.
      */
     public const int MAX_FOLD_VERSIONS = 100_000;
 
@@ -88,20 +90,19 @@ final readonly class AggregateStateProvider implements ProviderInterface
      * @throws Throwable when an application identity or permission backend cannot answer
      * @throws AnonymousReadRefused when no actor is bound and the app did not opt out of the read gate
      * @throws MalformedQueryParameter when `version` is present and is not a positive integer, a 400
-     * @throws AggregateFoldRefused when the stream head, or the requested `version`, exceeds the fold ceiling, or when the stream carries a `#[Personal]` event whose fold would render it decrypted
+     * @throws AggregateFoldRefused when the stream head, or the requested `version`, exceeds the fold
+     *                              ceiling, or when the stream carries a `#[Personal]` event whose fold would
+     *                              render it decrypted
      * @throws StorageFailure on a store read or deserialization failure
-     * @throws UnknownEventType when a stored event type resolves to no known event class on the snapshotable fold
-     * @throws CorruptAggregateHistory when the replay contradicts its own version header on the snapshotable fold, or stops before a requested `version` the head has passed
+     * @throws UnknownEventType when a snapshotable fold meets a stored type resolving to no known event class
+     * @throws CorruptAggregateHistory when the replay contradicts its own version header on the snapshotable
+     *                                 fold, or stops before a requested `version` the head has passed
      */
     #[Override]
     public function provide(Operation $operation, array $uriVariables = [], array $context = []): ?AggregateStateResource
     {
-        // @infection-ignore-all equivalent: both casts serve the ANALYSER over a mixed bag the
-        // router only ever fills with strings, and the default is already one; the values reach a
-        // string parameter and a concatenation either way, so no reader can tell them apart
-        $category = (string) ($uriVariables['category'] ?? '');
-        // @infection-ignore-all equivalent: the id's cast, same reason as the category's above
-        $this->gate->assertOwnedIdentityForRead('aggregate.read', $category.'-'.(string) ($uriVariables['id'] ?? ''));
+        $category = OpsRoute::string($uriVariables, 'category');
+        $this->gate->assertOwnedIdentityForRead('aggregate.read', $category.'-'.OpsRoute::string($uriVariables, 'id'));
 
         $requested = $this->requestedVersion($context);
         $entry = $this->catalog->entryFor($category);
@@ -111,7 +112,7 @@ final readonly class AggregateStateProvider implements ProviderInterface
         }
 
         try {
-            $id = $entry['id']::fromString((string) ($uriVariables['id'] ?? ''));
+            $id = $entry['id']::fromString(OpsRoute::string($uriVariables, 'id'));
         } catch (InvalidAggregateIdentity) {
             return null;
         }
@@ -212,7 +213,8 @@ final readonly class AggregateStateProvider implements ProviderInterface
         }
 
         // Materialize before the final probe so later appends cannot change the response state.
-        $state = $aggregate instanceof SnapshotableAggregateRoot ? $aggregate->toSnapshot() : null; // @phpstan-ignore instanceof.alwaysTrue (belt for a catalog entry lying about its class at runtime)
+        // @phpstan-ignore instanceof.alwaysTrue (a catalog entry may lie about its class at runtime)
+        $state = $aggregate instanceof SnapshotableAggregateRoot ? $aggregate->toSnapshot() : null;
         $this->assertPublicState($stream, $category, $id->toString());
 
         // the payload-bearing read leaves a trace, the twin of the event feed's audit line
@@ -268,8 +270,9 @@ final readonly class AggregateStateProvider implements ProviderInterface
         $version = PositiveIntOption::parse($raw);
 
         if ($version === null) {
-            // @infection-ignore-all equivalent: `sprintf` renders a scalar identically with or
+            // equivalent: `sprintf` renders a scalar identically with or
             // without the cast; the cast serves the analyzer, the branch beside it carries the type
+            // @infection-ignore-all
             throw MalformedQueryParameter::expectingAPositiveInteger('version', is_scalar($raw) ? (string) $raw : get_debug_type($raw));
         }
 

@@ -10,12 +10,12 @@ use Symfony\Component\Validator\Context\ExecutionContextInterface;
 use function trim;
 
 /**
- * The redrive action's body, the console contract verbatim: the message id names WHICH dead command
- * to send back into flight, the one `GET /_storm/sagas/{correlationId}` prints beside its evidence,
- * and `force` owns the risk when that evidence proves nothing.
+ * The redrive action's body, the console contract verbatim: the message id names which dead command to
+ * send back into flight, the one `GET /_storm/sagas/{correlationId}` prints beside its evidence, and
+ * `force` owns the risk when that evidence proves nothing.
  *
- * The reason is required WITH force and only with it, the same rule the console applies: re-sending
- * an effect nobody proved rolled back may execute it twice, and a decision of that weight has to be
+ * The reason is required with force and only with it, the same rule the console applies: re-sending an
+ * effect nobody proved rolled back may execute it twice, and a decision of that weight has to be
  * attributable in the ops log. Without force the guards do the deciding, so no justification is owed.
  *
  * The cross-field rule rides `Assert\Callback` rather than `Assert\Expression`: the latter needs

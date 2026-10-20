@@ -16,17 +16,16 @@ use Storm\Ledger\Crypto\ForgetOutcome;
  *
  * - Destroy the subject's cipher key, the tombstone kept as the proof
  * - Run every volunteering projection's `ForgetsSubject` hook per home in one transaction
- * - Answer the report that names what ran AND what did not
+ * - Answer the report that names what ran and what did not
  *
- * Where this surface earns its keep over the console: the actor. An article-17 erasure is a
- * decision someone made on someone's request, and the ops log records WHO beside the optional
- * stated why. Idempotent like the console: re-forgetting answers 200 with `keyDestroyed: false`,
- * the tombstone standing; scriptable, never an error.
+ * What this surface adds over the console is the actor. An article-17 erasure is a decision someone
+ * made on someone's request, and the ops log records who acted beside the optional stated why.
+ * Idempotent like the console: re-forgetting answers 200 with `keyDestroyed: false`, the tombstone
+ * standing; scriptable, never an error.
  *
- * The honest-scope clauses of the console report, pre-marking cleartext bytes, pre-marking
- * snapshots and the backup-retention window, are structural here: `untouched` lists the read-model
- * projections a rebuild must catch up. The doctrine itself stays in the learn, since an API field
- * cannot carry one.
+ * The honest-scope clauses of the console report, pre-marking cleartext bytes, pre-marking snapshots
+ * and the backup-retention window, are structural here: `untouched` lists the read-model projections a
+ * rebuild must catch up. The doctrine itself stays in the learn, since an API field cannot carry one.
  *
  * @see \Storm\Ledger\Console\PrivacyForgetCommand the console twin
  * @see \Storm\Ledger\Crypto\SubjectForgetter the one assembly both render
@@ -54,8 +53,8 @@ final readonly class PrivacyForgetResource
 {
     /**
      * @param  list<string>  $touched  volunteer projections whose hook ran and committed
-     * @param  list<string>  $untouched  registered read-model projections with NO hook; reset +
-     *                                   rebuild refolds them onto fallbacks
+     * @param  list<string>  $untouched  registered read-model projections with no hook; reset and rebuild
+     *                                   refold them onto fallbacks
      */
     public function __construct(
         public string $subject,

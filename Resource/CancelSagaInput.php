@@ -7,9 +7,11 @@ namespace Storm\ApiOps\Resource;
 use Symfony\Component\Validator\Constraints as Assert;
 
 /**
- * The cancel action's body, the console contract verbatim: the workflow type names WHICH saga
- * under the correlation, the reason lands on `SagaCancelled` as the durable audit trail, and
- * `force` owns the risk at an effect-gating wait, where an unforced cancel is refused.
+ * The cancel action's body, the console contract verbatim:
+ *
+ * - The workflow type names which saga under the correlation
+ * - The reason lands on `SagaCancelled` as the durable audit trail
+ * - `force` owns the risk at an effect-gating wait, where an unforced cancel is refused
  */
 final readonly class CancelSagaInput
 {

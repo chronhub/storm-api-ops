@@ -28,7 +28,7 @@ final class AggregateCatalogTest extends TestCase
     #[Group('adversarial')]
     public function two_aggregates_sharing_a_category_refuse_at_construction(): void
     {
-        // last-wins would answer /_storm/aggregates/{category}/{id} for the WRONG aggregate class,
+        // last-wins would answer /_storm/aggregates/{category}/{id} for the wrong aggregate class,
         // silently; the catalog is the one place that can notice the configuration fault
         $this->expectException(LogicException::class);
         $this->expectExceptionMessageMatches('/both declare category "account"/');

@@ -86,9 +86,10 @@ final class OutboxFailedProviderTest extends TestCase
 
         self::assertCount(2, $page);
         // the mapping is the layer boundary, and it is invisible to a field-by-field assertion: the
-        // Chronicler row carries the same six property names, so only the TYPE separates the served
-        // resource from the store's own DTO handed straight through
-        // @phpstan-ignore staticMethod.alreadyNarrowedType (the declared list type is no runtime guarantee; UnwrapArrayMap survived every value assertion because the store DTO carries the same six property names)
+        // Chronicler row carries the same six property names, so only the type separates the served
+        // resource from the store's own DTO handed straight through; UnwrapArrayMap survived every
+        // value assertion for that reason
+        // @phpstan-ignore staticMethod.alreadyNarrowedType (the declared list type is no runtime guarantee)
         self::assertContainsOnlyInstancesOf(OutboxFailedResource::class, $page);
         self::assertSame(7, $page[0]->id);
         self::assertSame(700, $page[0]->position);

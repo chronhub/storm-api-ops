@@ -13,19 +13,21 @@ use Storm\ApiOps\State\PageWindow;
 use Storm\ApiOps\State\StreamEventsProvider;
 
 /**
- * One stored event as the HYDRATED CURRENT VIEW, honestly named: the read rides `StreamReader`,
- * so aliases are resolved, the payload is deserialized and upcast to the current shape, and
- * `payload` is the CURRENT event's `toPayload()` under the no-decrypt veil, where a `#[Personal]`
- * class's declared keys are overlaid from the stored row, the ciphered envelope, never the
- * decrypted values. The `headers` bag and `type` are the stored ones; `recorded_at` is
- * store-generated. Payloads and headers are the point of introspection, and exactly why this
- * package is a conscious opt-in behind the app's ops firewall. A forensic raw-row view of the
- * stored bytes, readable even when an alias or an upcast chain is broken, is deliberately NOT
- * this endpoint; that broken row surfaces as a 500 an operator must see.
+ * One stored event as the hydrated current view: the read rides `StreamReader`, so aliases are
+ * resolved and the payload is deserialized and upcast to the current shape.
  *
- * Stream and aggregate windows resume by global position through `after`, the store's append
- * order. The correlation window wraps these rows in {@see CorrelationEventsPageResource} with
- * an explicit truncation flag.
+ * `payload` is the current event's `toPayload()` under the no-decrypt veil, where a `#[Personal]`
+ * class's declared keys are overlaid from the stored row, the ciphered envelope, never the decrypted
+ * values. The `headers` bag and `type` are the stored ones; `recorded_at` is store-generated. Payloads
+ * and headers are what introspection serves, and exactly why this package is a conscious opt-in behind
+ * the app's ops firewall.
+ *
+ * A broken alias or upcast chain surfaces here as a 500 an operator must see: this endpoint serves no
+ * forensic raw-row view of the stored bytes.
+ *
+ * Stream and aggregate windows resume by global position through `after`, the store's append order.
+ * The correlation window wraps these rows in {@see CorrelationEventsPageResource} with an explicit
+ * truncation flag.
  */
 #[ApiResource(
     shortName: 'StormStoredEvent',
@@ -39,7 +41,7 @@ use Storm\ApiOps\State\StreamEventsProvider;
             paginationEnabled: false,
             provider: StreamEventsProvider::class,
             parameters: [
-                // the zero minimum compiles to NO constraint, API Platform deriving bounds by truthiness; the
+                // the zero minimum compiles to no constraint, API Platform deriving bounds by truthiness; the
                 // real guard is PageWindow::afterPosition's clamp, pinned by its own test
                 'after' => new QueryParameter(schema: ['type' => 'integer', 'minimum' => 0], description: 'Resume strictly after this global position.'),
                 'limit' => new QueryParameter(schema: ['type' => 'integer', 'minimum' => 1, 'maximum' => PageWindow::MAX_LIMIT], description: 'Page size, capped server-side.'),
@@ -52,7 +54,7 @@ use Storm\ApiOps\State\StreamEventsProvider;
             paginationEnabled: false,
             provider: StreamEventsProvider::class,
             parameters: [
-                // the zero minimum compiles to NO constraint, API Platform deriving bounds by truthiness; the
+                // the zero minimum compiles to no constraint, API Platform deriving bounds by truthiness; the
                 // real guard is PageWindow::afterPosition's clamp, pinned by its own test
                 'after' => new QueryParameter(schema: ['type' => 'integer', 'minimum' => 0], description: 'Resume strictly after this global position.'),
                 'limit' => new QueryParameter(schema: ['type' => 'integer', 'minimum' => 1, 'maximum' => PageWindow::MAX_LIMIT], description: 'Page size, capped server-side.'),

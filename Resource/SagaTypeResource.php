@@ -14,15 +14,17 @@ use Storm\ApiOps\OpsActorGate;
 use Storm\ApiOps\State\SagaTypePauseProcessor;
 
 /**
- * A workflow TYPE as an ops surface: the fleet-wide freeze, the HTTP twin of `storm:saga:pause`
- * with no correlation. Registering the type in `workflow_pauses` gates execution AND births, the
- * stop-the-bleeding move for a broken handler or a downstream maintenance window; the resume
- * deletes the registration, overdue timers firing at the next cycle at their original instants.
- * The pause is idempotent, the console contract: re-freezing an already frozen type keeps the
- * first stamp and reason; resuming an unfrozen one is the 409 that says so. A type no registry
- * knows is a 404 on the freeze, since the row it would write gates nothing.
+ * A workflow type as an ops surface: the fleet-wide freeze, the HTTP twin of `storm:saga:pause` with
+ * no correlation.
  *
- * Authorization is the same ops-zone access_control as every `/_storm` surface, with
+ * Registering the type in `workflow_pauses` gates execution and births, the emergency move for a
+ * broken handler or a downstream maintenance window; the resume deletes the registration, overdue
+ * timers firing at the next cycle at their original instants. The pause is idempotent, the console
+ * contract: re-freezing an already frozen type keeps the first stamp and reason, and resuming an
+ * unfrozen one is the 409 that says so. A type no registry knows is a 404 on the freeze, since the row
+ * it would write gates nothing.
+ *
+ * Authorization is the same ops-zone `access_control` as every `/_storm` surface, with
  * {@see OpsActorGate} refusing anonymous mutations beneath it.
  */
 #[ApiResource(
@@ -60,7 +62,7 @@ final readonly class SagaTypeResource
 {
     public function __construct(
         public string $workflowType,
-        /** Whether the type is registered in `workflow_pauses` AFTER the verb ran. */
+        /** Whether the type is registered in `workflow_pauses` after the verb ran. */
         public bool $paused,
     ) {}
 }

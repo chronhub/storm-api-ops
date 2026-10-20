@@ -30,15 +30,16 @@ use function sprintf;
 
 /**
  * Every stored event carrying one of the given correlation ids, the HTTP window over the same read
- * `storm:events:inspect --recipe correlation_trace` serves. The predicate and its index-matching
- * spelling belong to `CorrelationFeedFilter`; this provider parses the set and veils the payload,
- * exactly as the stream window does.
+ * `storm:events:inspect --recipe correlation_trace` serves.
+ *
+ * The predicate and its index-matching spelling belong to `CorrelationFeedFilter`; this provider parses
+ * the set and veils the payload, exactly as the stream window does.
  *
  * The set is the contract. Several ids are traced together because a saga child carries its own
- * correlation id, so a lineage is a SET resolved where it is known, through the `children` of a
- * saga snapshot, and passed in whole. This surface offers no lineage preset and will not grow one:
- * a preset meaning the whole tree wherever coordination happens to be installed would mean two
- * different things in two applications.
+ * correlation id, so a lineage is a set resolved where it is known, through the `children` of a saga
+ * snapshot, and passed in whole. This surface offers no lineage preset and will not grow one: a preset
+ * meaning the whole tree wherever coordination happens to be installed would mean two different things
+ * in two applications.
  *
  * The window reads one extra record to establish truncation, then returns at most the applied
  * limit. The extra record is not converted to a response payload. No resume cursor is offered;
@@ -76,7 +77,7 @@ final readonly class CorrelationEventsProvider implements ProviderInterface
         /** @var array<string, mixed> $filters */
         $filters = $context['filters'] ?? [];
 
-        // the gate stands ahead of BOTH the store and the parse: an unnamed caller learns nothing,
+        // the gate stands ahead of both the store and the parse: an unnamed caller learns nothing,
         // not even that its set was malformed, and the refusal names the raw set it asked for
         $raw = $filters['ids'] ?? null;
         $this->gate->assertOwnedIdentityForRead('correlations.read', is_string($raw) ? $raw : '');
@@ -113,7 +114,7 @@ final readonly class CorrelationEventsProvider implements ProviderInterface
         $ids = CorrelationIdSet::parse($filters['ids'] ?? null);
 
         if ($ids === []) {
-            // a narrowing parameter dropped WIDENS the request, and this one would widen to the
+            // a narrowing parameter dropped widens the request, and this one would widen to the
             // whole store: refusing is the only reading that cannot mislead
             throw MalformedQueryParameter::expectingANonEmptySet('ids');
         }

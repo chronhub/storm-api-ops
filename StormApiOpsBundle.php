@@ -11,25 +11,26 @@ use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigura
 use Symfony\Component\HttpKernel\Bundle\AbstractBundle;
 
 /**
- * The framework's own introspection surface over HTTP: HTTP twins of the `storm:*` console
- * commands for streams/events, projections, sagas, and the aggregate as fold/version/history. It
- * rides the same API Platform bridge under the ops zone at `/_storm/*`, firewalled app-side, with
+ * The framework's own introspection surface over HTTP: twins of the `storm:*` console commands for
+ * streams and events, projections, sagas, and the aggregate as fold, version and history.
+ *
+ * It rides the same API Platform bridge under the ops zone at `/_storm/*`, firewalled app-side, with
  * Bureau as the identity substrate.
  *
- * A deliberate TOP-CONSUMER sibling of the strict-leaf Api module: introspection reads the
- * packages' own services, the same stores and gateways the console commands render, which the Api
- * leaf must never see; widening the leaf would kill its bus-only guarantee. The surface lives here
- * instead, and installing THIS package is the conscious opt-in to what it carries: raw event
- * payloads and destructive actions. Registered next to `StormApiBundle`, never instead of it.
+ * It is a top-consumer sibling of the strict-leaf Api module: introspection reads the packages' own
+ * services, the same stores and gateways the console commands render, which the Api leaf must never
+ * see, and widening the leaf would break its bus-only guarantee. The surface lives here instead, and
+ * installing this package is the conscious opt-in to what it carries: raw event payloads and
+ * destructive actions. Registered next to `StormApiBundle`, never instead of it.
  */
 final class StormApiOpsBundle extends AbstractBundle
 {
     /**
      * {@inheritDoc}
      *
-     * Registering the bundle IS the exposure gesture: the ops resources join API Platform's scan
-     * by prepend, so the app never lists a framework path in its own `mapping.paths`; removing the
-     * bundle removes the whole surface, nothing lingers by configuration.
+     * Registering the bundle is the exposure gesture: the ops resources join API Platform's scan by
+     * prepend, so the app never lists a framework path in its own `mapping.paths`; removing the bundle
+     * removes the whole surface, and nothing lingers in configuration.
      */
     #[Override]
     public function prependExtension(ContainerConfigurator $container, ContainerBuilder $builder): void

@@ -7,15 +7,15 @@ namespace Storm\ApiOps\Error;
 use RuntimeException;
 
 /**
- * A read reached the ops surface with no owned identity: refused before touching any store, the
- * read half of the package's fail-closed backstop under the app's firewall. A 403 on purpose.
- * The reads serve hydrated rows, event payloads above all, so the one misconfiguration the docs
- * warn about, an `access_control` pattern that forgets the `/api` mount, must fail as loud here
- * as it does on the destructive verbs, never drain the store silently.
+ * A read reached the ops surface with no owned identity: refused before touching any store, the read
+ * half of the package's fail-closed backstop under the app's firewall.
  *
- * Dev and demo environments opt out explicitly with `storm_api_ops.allow_anonymous_reads`; the
- * default refuses. The `describe` endpoint is exempt by design, serving compiled wiring and
- * never a row.
+ * A 403: the reads serve hydrated rows, event payloads above all, so the one misconfiguration the docs
+ * warn about, an `access_control` pattern that forgets the `/api` mount, must fail as loudly here as it
+ * does on the destructive verbs, never drain the store silently.
+ *
+ * Dev and demo environments opt out explicitly with `storm_api_ops.allow_anonymous_reads`; the default
+ * refuses. The `describe` endpoint is exempt, since it serves compiled wiring and never a row.
  */
 final class AnonymousReadRefused extends RuntimeException
 {

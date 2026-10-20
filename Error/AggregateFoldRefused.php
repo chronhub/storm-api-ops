@@ -9,19 +9,18 @@ use RuntimeException;
 /**
  * A snapshotable fold refused before it ran, for one of two reasons; a 422 by declaration either way.
  *
- * The CEILING: the aggregate's stream head exceeds what an HTTP GET may replay, since a stale or
- * absent snapshot would make the fold as long as the stream. The head bounds the WORST fold, so the
- * refusal is a generous approximation, never a claim about the actual snapshot's freshness; the
- * refusal points at the history the fold is made of, no `storm:*` verb offering
- * an aggregate fold. A historical fold never starts from a snapshot, so its ceiling applies to the
- * requested version, which is exactly its replay length.
+ * The ceiling: the aggregate's stream head exceeds what an HTTP `GET` may replay, since a stale or
+ * absent snapshot would make the fold as long as the stream. The head bounds the worst fold, so the
+ * refusal is a generous approximation, never a claim about the actual snapshot's freshness; it points
+ * at the history the fold is made of, since no `storm:*` verb offers an aggregate fold. A historical
+ * fold never starts from a snapshot, so its ceiling applies to the requested version, which is exactly
+ * its replay length.
  *
- * PERSONAL DATA IN STATE: the stream carries a `#[Personal]` event, and a fold sees decrypted values.
- * Serving `toSnapshot()` here would publish the subject's personal state in clear over HTTP, which is
- * the same artifact `PersonalDataSnapshotGuard` refuses to let a sweep write to disk. Refusing loudly
- * rather than answering a silent `state: null`: that answer is indistinguishable from a
- * non-snapshotable aggregate's, and an operator reading it would conclude the aggregate holds no
- * state.
+ * Personal data in state: the stream carries a `#[Personal]` event, and a fold sees decrypted values.
+ * Serving `toSnapshot()` here would publish the subject's personal state in clear over HTTP, the same
+ * artifact `PersonalDataSnapshotGuard` refuses to let a sweep write to disk. The refusal is loud rather
+ * than a silent `state: null`: that answer is indistinguishable from a non-snapshotable aggregate's,
+ * and an operator reading it would conclude the aggregate holds no state.
  */
 final class AggregateFoldRefused extends RuntimeException
 {
@@ -49,7 +48,7 @@ final class AggregateFoldRefused extends RuntimeException
 
     /**
      * @param  string  $offendingType  the stored alias that makes the stream PII-bearing, named so the
-     *                                 operator knows WHICH event to look at rather than that one exists
+     *                                 operator knows which event to look at rather than that one exists
      */
     public static function personalDataInState(string $category, string $id, string $offendingType): self
     {

@@ -21,26 +21,27 @@ use Storm\Projector\Exception\UnknownProjection;
 use Storm\Projector\Exception\UnsupportedProjection;
 
 /**
- * One projection as the ops surface sees it: the HTTP twin of `storm:projection:status`, the same
- * row, lag and liveness reads, structured instead of table cells. Status and its pause horizon
- * become two fields, the lease becomes owner, live truth and horizon, and the producer's output
- * becomes stream or prefix. The row keeps `lease_owner` after a worker crash, so `leaseLive` carries
- * the SQL-clock answer.
+ * One projection as the ops surface sees it: the HTTP twin of `storm:projection:status`, the same row,
+ * lag and liveness reads, structured instead of table cells.
  *
- * Every key the row serves reaches this resource. The console renders the wide fields only for a
- * NAMED projection, a table being unable to pay their width across a sweep; a structured twin has
- * no such cost, so it carries them on both the item and the collection.
+ * Status and its pause horizon become two fields, the lease becomes owner, live truth and horizon, and
+ * the producer's output becomes stream or prefix. The row keeps `lease_owner` after a worker crash, so
+ * `leaseLive` carries the SQL-clock answer.
  *
- * The collection is unwindowed on purpose: projections are a declared, code-bounded population,
- * nothing like the streams' directory.
+ * Every key the row serves reaches this resource. The console renders the wide fields only for a named
+ * projection, since a table cannot pay their width across a sweep; a structured twin has no such cost,
+ * so it carries them on both the item and the collection.
  *
- * The status controls ride the same resource as POST verbs, the destructive actions this
- * package's opt-in is about. The app wires `OpsAuthorization` and keeps method-scoped
- * `access_control` rules around the mounted ops zone. The framework hard-codes no role.
- * Beneath the firewall, {@see OpsActorGate} requires both an identity and an explicit permission;
- * either refusal is a 403. A refused transition
- * answers 409 with the state machine's own words; a success answers the projection's fresh truth.
- * Reset of a registered projection without a checkpoint answers 204 with no representation.
+ * The collection is unwindowed: projections are a declared, code-bounded population, nothing like the
+ * streams' directory.
+ *
+ * The status controls ride the same resource as `POST` verbs, the destructive actions this package's
+ * opt-in is about. The app wires `OpsAuthorization` and keeps method-scoped `access_control` rules
+ * around the mounted ops zone; the framework hard-codes no role. Beneath the firewall,
+ * {@see OpsActorGate} requires both an identity and an explicit permission, and either refusal is a
+ * 403. A refused transition answers 409 with the state machine's own words; a success answers the
+ * projection's fresh truth. Reset of a registered projection without a checkpoint answers 204 with no
+ * representation.
  */
 #[ApiResource(
     shortName: 'StormProjection',

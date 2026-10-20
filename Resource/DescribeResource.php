@@ -12,24 +12,25 @@ use Storm\ApiOps\NoStoreHeaders;
 use Storm\ApiOps\State\DescribeProvider;
 
 /**
- * The compiled Storm wiring over HTTP, the twin of `storm:describe`: it serves the EXACT document
- * the console renders, same descriptor, same sections, same sorted, diffable shape. Static by
- * the descriptor's contract, never live: everything here is an in-memory registry or a compiled
- * container parameter, so this endpoint answers with the database and the broker down, and the
- * runtime questions of checkpoints, lags and instances stay with the inspection resources next
+ * The compiled Storm wiring over HTTP, the twin of `storm:describe`: it serves the exact document the
+ * console renders, same descriptor, same sections, same sorted, diffable shape.
+ *
+ * Static by the descriptor's contract, never live: everything here is an in-memory registry or a
+ * compiled container parameter, so this endpoint answers with the database and the broker down, and
+ * the runtime questions of checkpoints, lags and instances stay with the inspection resources next
  * door.
  *
  * A singleton read: the route carries no identifier because a compiled container has exactly one
- * description. `?section=` mirrors the console's `--section` contract: the fragment stays under
- * its own key, so a consumer never has to know which channel produced it; an unknown name is
- * refused loud with a 422, the surface's invalid-value status, listing the valid ones. The
- * one-key rendering rides `skip_null_values`: the DTO's eight section properties are nullable,
- * the filtered-out ones stay null, and only the TOP-LEVEL null attributes are skipped; nulls
- * inside a section are document content and normalize untouched.
+ * description. `?section=` mirrors the console's `--section` contract: the fragment stays under its
+ * own key, so a consumer never has to know which channel produced it, and an unknown name is refused
+ * loudly with a 422, the surface's invalid-value status, listing the valid ones. The one-key rendering
+ * rides `skip_null_values`: the DTO's eight section properties are nullable, the filtered-out ones stay
+ * null, and only the top-level null attributes are skipped; nulls inside a section are document
+ * content and normalize untouched.
  *
- * Pure read, so no actor gate and no audit record, the module's line: audits name who ACTED, and
- * nothing acts here. Access stays the app's ops firewall: the documented `^/(api/)?_storm`
- * access_control line covers this path like every other, and {@see NoStoreHeaders} stamps the
+ * A pure read, so no actor gate and no audit record, the module's line: audits name who acted, and
+ * nothing acts here. Access stays with the app's ops firewall: the documented `^/(api/)?_storm`
+ * `access_control` line covers this path like every other, and {@see NoStoreHeaders} stamps the
  * response no-store like every other.
  *
  * @see \Storm\Symfony\Describe\StormDescriptor the document and its static-only sources
@@ -63,16 +64,20 @@ use Storm\ApiOps\State\DescribeProvider;
 final readonly class DescribeResource
 {
     /**
-     * Eight properties, one per section, named and ordered exactly as the canonical document
-     * renders them: the property names ARE the document keys, no name conversion in between.
+     * Nine properties, one per section, named and ordered exactly as the canonical document renders
+     * them: the property names are the document keys, with no name conversion in between.
+     *
      * Null never means "empty" here, it means "filtered out by `?section=`": an empty or absent
      * capability still renders its stable shape inside the section, per the descriptor.
      *
-     * @param  array<string, mixed>|null  $meta  format schema_version, PHP version, environment
-     * @param  list<array<string, mixed>>|null  $event_types  the catalog: alias/class/version/replaces + consumers
-     * @param  array<string, mixed>|null  $workflows  availability + the attribute-derived definitions
+     * @param  array<string, mixed>|null  $meta  format `schema_version`, PHP version, environment
+     * @param  list<array<string, mixed>>|null  $event_types  the catalog: alias, class, version, replaced
+     *                                                        aliases and consumers
+     * @param  list<array<string, mixed>>|null  $command_types  the commands: alias, class, replaced aliases
+     *                                                          and the saga declarations that issue each
+     * @param  array<string, mixed>|null  $workflows  availability and the attribute-derived definitions
      * @param  list<array<string, mixed>>|null  $projections  one record per registered projection
-     * @param  array<string, mixed>|null  $buses  the bundle's bus ids + the compiled saga priority policy
+     * @param  array<string, mixed>|null  $buses  the bundle's bus ids and the compiled saga priority policy
      * @param  array<string, mixed>|null  $grants  the two compiled grant parameters
      * @param  list<array<string, mixed>>|null  $schemas  table names per owning module
      * @param  array<string, mixed>|null  $health  the tagged check names, never probed
@@ -80,6 +85,7 @@ final readonly class DescribeResource
     public function __construct(
         public ?array $meta,
         public ?array $event_types,
+        public ?array $command_types,
         public ?array $workflows,
         public ?array $projections,
         public ?array $buses,

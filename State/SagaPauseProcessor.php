@@ -25,19 +25,21 @@ use Storm\Saga\Store\Inspection\SagaInspectionGateway;
 use Storm\Saga\Store\WorkflowId;
 use Storm\Saga\Store\WorkflowInstances;
 use Storm\Saga\Store\WorkflowPauses;
+use Storm\Support\Error\AuditDigest;
 use Throwable;
 
 /**
- * The operator freeze on ONE instance over HTTP, the twins of `storm:saga:pause` / `storm:saga:resume`
- * with a correlation, through the same store verbs: `paused_at` and its reason stamped on a RUNNING
- * row, or lifted with the due timers simply claimable again at their original instants. The status
- * stays untouched; a paused saga is a living one that is not executed. Each operation declares its
- * verb in `storm_ops_action`; the announcements the console dispatches ride here too, so telemetry
- * cannot tell the two surfaces apart. A refusal is the console's warning as a 409: the verb reports
- * instead of guessing.
+ * The operator freeze on one instance over HTTP, the twins of `storm:saga:pause` and
+ * `storm:saga:resume` with a correlation, through the same store verbs.
  *
- * A successful verb answers the instance's fresh snapshot, `paused_at` and `paused_reason` visible;
- * a frozen saga must SAY so wherever it is read.
+ * `paused_at` and its reason are stamped on a running row, or lifted with the due timers simply
+ * claimable again at their original instants. The status stays untouched; a paused saga is a living
+ * one that is not executed. Each operation declares its verb in `storm_ops_action`; the announcements
+ * the console dispatches ride here too, so telemetry cannot tell the two surfaces apart. A refusal is
+ * the console's warning as a 409: the verb reports instead of guessing.
+ *
+ * A successful verb answers the instance's fresh snapshot, `paused_at` and `paused_reason` visible; a
+ * frozen saga must say so wherever it is read.
  *
  * @implements ProcessorInterface<PauseSagaInput|ResumeSagaInput|mixed, SagaResource>
  */
@@ -72,14 +74,12 @@ final readonly class SagaPauseProcessor implements ProcessorInterface
             throw new LogicException('The freeze operations declare their input class; anything else is a resource declaration fault.');
         }
 
-        // @infection-ignore-all; equivalent: the cast serves the ANALYSER, the array being typed mixed; the router only ever supplies strings, so dropping it changes no runtime value
-        $correlationId = (string) ($uriVariables['correlationId'] ?? '');
-        // @infection-ignore-all; equivalent: the cast serves the ANALYSER, the array being typed mixed; the router only ever supplies strings, so dropping it changes no runtime value
-        $action = (string) ($operation->getExtraProperties()['storm_ops_action'] ?? '');
+        $correlationId = OpsRoute::string($uriVariables, 'correlationId');
+        $action = OpsRoute::string($operation->getExtraProperties(), 'storm_ops_action');
         $type = $data->workflowType;
         $subject = $type.'/'.$correlationId;
 
-        // before the store on purpose: an anonymous caller learns nothing, not even existence
+        // before the store: an anonymous caller learns nothing, not even existence
         $this->gate->assertOwnedIdentity($action, $subject);
 
         $id = new WorkflowId($type, $correlationId);
@@ -89,8 +89,6 @@ final readonly class SagaPauseProcessor implements ProcessorInterface
                 case 'pause':
                     $reason = $data instanceof PauseSagaInput ? $data->reason : null;
                     if (! $this->pauses->pauseInstance($id, $reason)) {
-                        $this->audit->record($action, $subject, 'refused: nothing to freeze');
-
                         throw SagaPauseRefused::nothingToFreeze($type, $correlationId);
                     }
                     $row = $this->instances->find($id);
@@ -98,8 +96,6 @@ final readonly class SagaPauseProcessor implements ProcessorInterface
                     break;
                 case 'resume':
                     if (! $this->pauses->resumeInstance($id)) {
-                        $this->audit->record($action, $subject, 'refused: nothing to lift');
-
                         throw SagaPauseRefused::nothingToLift($type, $correlationId);
                     }
                     $row = $this->instances->find($id);
@@ -111,12 +107,18 @@ final readonly class SagaPauseProcessor implements ProcessorInterface
                         $action,
                     ));
             }
-        } catch (SagaPauseRefused|LogicException $e) {
-            throw $e; // the refusal recorded at its branch; the wiring fault mutated nothing and leaves no line
+        } catch (SagaPauseRefused $e) {
+            // the store's decline, nothing to freeze or nothing to lift, answered 409 by the resource
+            $this->audit->record($action, $subject, 'refused: '.$e->getMessage());
+
+            throw $e;
+        } catch (LogicException $e) {
+            // the wiring fault mutated nothing and leaves no line
+            throw $e;
         } catch (Throwable $e) {
-            // an infrastructure outage is a FAILURE, never a refusal: the audit line must not read
+            // an infrastructure outage is a failure, never a refusal: the audit line must not read
             // as an operator's verb declined when the store simply went away
-            $this->audit->record($action, $subject, 'failed: '.$e->getMessage());
+            $this->audit->record($action, $subject, 'failed: '.AuditDigest::digest($e));
 
             throw $e;
         }
@@ -125,7 +127,7 @@ final readonly class SagaPauseProcessor implements ProcessorInterface
 
         $snapshots = $this->gateway->inspect($correlationId, $type);
 
-        // pause and resume never delete; a retention PRUNE deletes, and it can win the read-back,
+        // pause and resume never delete; a retention prune deletes, and it can win the read-back,
         // the same race this class already defends at the generation read a few lines above
         return $snapshots === []
             ? throw SagaCommandNotFound::vanishedAfter($action, $correlationId)

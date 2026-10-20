@@ -16,6 +16,7 @@ use RuntimeException;
 use stdClass;
 use Storm\ApiOps\Error\AnonymousMutationRefused;
 use Storm\ApiOps\Error\SagaCommandNotFound;
+use Storm\ApiOps\Error\SagaRedriveRefused;
 use Storm\ApiOps\OpsActorGate;
 use Storm\ApiOps\OpsAuditLog;
 use Storm\ApiOps\Resource\RedriveSagaInput;
@@ -26,7 +27,13 @@ use Storm\Saga\Exception\SagaStorageFailure;
 use Storm\Saga\Outbox\RedriveOutcome;
 use Storm\Saga\Outbox\WorkflowOutboxWriter;
 use Storm\Saga\Store\Inspection\SagaInspectionGateway;
+use Storm\Saga\Testing\InMemory\PlainMessageTypeMapper;
 use Stringable;
+
+use function array_filter;
+use function array_unique;
+use function in_array;
+use function sprintf;
 
 final class SagaRedriveProcessorTest extends TestCase
 {
@@ -43,7 +50,7 @@ final class SagaRedriveProcessorTest extends TestCase
             ->with('c-vanished', 'mid-1', false)
             ->willReturn(RedriveOutcome::Redriven);
 
-        // the gateway is final; its seam is the connection. An empty transactional read IS the
+        // the gateway is final; its seam is the connection. An empty transactional read is the
         // vanished instance, no closure ever touching a database
         $connection = $this->createStub(Connection::class);
         $connection->method('transactional')->willReturn([]);
@@ -62,7 +69,7 @@ final class SagaRedriveProcessorTest extends TestCase
 
         $processor = new SagaRedriveProcessor(
             $outbox,
-            new SagaInspectionGateway($connection, new WorkflowRegistry),
+            new SagaInspectionGateway($connection, new WorkflowRegistry, new PlainMessageTypeMapper),
             $audit,
             new OpsActorGate(new OpsAuditLog(new NullLogger), null, allowAnonymous: true),
         );
@@ -75,7 +82,7 @@ final class SagaRedriveProcessorTest extends TestCase
             self::assertStringContainsString('c-vanished', $e->getMessage());
         }
 
-        // the repair itself HAPPENED and stays audited as applied: the throw reports a failure to
+        // the repair itself happened and stays audited as applied: the throw reports a failure to
         // show the result, never un-records the act
         $applied = array_filter($log->records, static fn (array $r): bool => ($r['context']['outcome'] ?? null) === 'applied');
         self::assertCount(1, $applied);
@@ -97,7 +104,7 @@ final class SagaRedriveProcessorTest extends TestCase
 
         $processor = new SagaRedriveProcessor(
             $outbox,
-            new SagaInspectionGateway($this->createStub(Connection::class), new WorkflowRegistry),
+            new SagaInspectionGateway($this->createStub(Connection::class), new WorkflowRegistry, new PlainMessageTypeMapper),
             $audit,
             new OpsActorGate(new OpsAuditLog(new NullLogger), null, allowAnonymous: true),
         );
@@ -109,7 +116,7 @@ final class SagaRedriveProcessorTest extends TestCase
             self::assertSame($outage, $e);
         }
 
-        self::assertSame('failed: The saga storage failed: the outbox went away', $log->records[0]['context']['outcome']);
+        self::assertSame("failed: Storm\\Saga\\Exception\\SagaStorageFailure: The saga storage failed.\ncaused by: RuntimeException: the outbox went away", $log->records[0]['context']['outcome']);
     }
 
     #[Test]
@@ -129,7 +136,7 @@ final class SagaRedriveProcessorTest extends TestCase
 
         $processor = new SagaRedriveProcessor(
             $outbox,
-            new SagaInspectionGateway($connection, new WorkflowRegistry),
+            new SagaInspectionGateway($connection, new WorkflowRegistry, new PlainMessageTypeMapper),
             $audit,
             new OpsActorGate($audit, null, allowAnonymous: false),
         );
@@ -143,7 +150,7 @@ final class SagaRedriveProcessorTest extends TestCase
 
         self::assertSame('refused: anonymous mutation', $log->records[0]['context']['outcome']);
 
-        // a redrive names a single dead command, so the trail must carry BOTH halves of its address:
+        // a redrive names a single dead command, so the trail must carry both halves of its address:
         // the correlation that scopes it and the message that identifies it inside that correlation
         self::assertSame('c-1/mid-1', $log->records[0]['context']['subject']);
     }
@@ -152,7 +159,7 @@ final class SagaRedriveProcessorTest extends TestCase
     public function a_foreign_input_class_is_a_wiring_fault_refused_ahead_of_the_gate(): void
     {
         // the same wiring as the test above, differing only by the input class, so the exception
-        // TYPE says which guard ran first: a resource declaring another input is a composition bug,
+        // type says which guard ran first: a resource declaring another input is a composition bug,
         // and it must be caught before the actor gate and before the outbox. An
         // AnonymousMutationRefused here would mean a 403 hides a wiring fault from whoever wired it
         $outbox = $this->createMock(WorkflowOutboxWriter::class);
@@ -166,7 +173,7 @@ final class SagaRedriveProcessorTest extends TestCase
 
         $processor = new SagaRedriveProcessor(
             $outbox,
-            new SagaInspectionGateway($connection, new WorkflowRegistry),
+            new SagaInspectionGateway($connection, new WorkflowRegistry, new PlainMessageTypeMapper),
             $audit,
             new OpsActorGate($audit, null, allowAnonymous: false),
         );
@@ -180,5 +187,76 @@ final class SagaRedriveProcessorTest extends TestCase
 
         // the gate records every refusal it pronounces, so its silence is what proves it never ran
         self::assertSame([], $log->records);
+    }
+
+    #[Test]
+    public function a_command_the_outbox_does_not_hold_is_a_404_audited_as_refused(): void
+    {
+        // a wrong address, not a conflict: the trail reads the 404's own sentence as a refusal,
+        // never as an outage, and the read-back never runs
+        $outbox = $this->createStub(WorkflowOutboxWriter::class);
+        $outbox->method('redrive')->willReturn(RedriveOutcome::NotFound);
+        $log = new RecordingLog;
+
+        try {
+            $this->processor($outbox, $log)->process(new RedriveSagaInput(messageId: 'mid-1'), new Post, ['correlationId' => 'c-1']);
+            self::fail('an unknown command must surface as SagaCommandNotFound');
+        } catch (SagaCommandNotFound $e) {
+            self::assertStringStartsWith('No command "mid-1" for saga c-1', $e->getMessage());
+        }
+
+        self::assertCount(1, $log->records);
+        self::assertSame(
+            'refused: No command "mid-1" for saga c-1: check the message id printed by the saga snapshot, or the outbox row may have been pruned.',
+            $log->records[0]['context']['outcome'],
+        );
+    }
+
+    #[Test]
+    public function each_guard_decline_is_a_409_audited_under_its_own_sentence(): void
+    {
+        // the refused line carries the refusal's sentence and not the outcome's token, so the
+        // sentence alone tells the guards apart
+        $declines = array_filter(
+            RedriveOutcome::cases(),
+            static fn (RedriveOutcome $outcome): bool => ! in_array($outcome, [RedriveOutcome::Redriven, RedriveOutcome::NotFound], true),
+        );
+        $lines = [];
+
+        foreach ($declines as $outcome) {
+            $outbox = $this->createStub(WorkflowOutboxWriter::class);
+            $outbox->method('redrive')->willReturn($outcome);
+            $log = new RecordingLog;
+
+            try {
+                $this->processor($outbox, $log)->process(new RedriveSagaInput(messageId: 'mid-1'), new Post, ['correlationId' => 'c-1']);
+                self::fail(sprintf('%s must surface as SagaRedriveRefused', $outcome->name));
+            } catch (SagaRedriveRefused $e) {
+                self::assertSame(SagaRedriveRefused::because($outcome, 'c-1', 'mid-1')->getMessage(), $e->getMessage());
+            }
+
+            self::assertCount(1, $log->records);
+            self::assertSame('refused: '.SagaRedriveRefused::because($outcome, 'c-1', 'mid-1')->getMessage(), $log->records[0]['context']['outcome']);
+            $lines[] = $log->records[0]['context']['outcome'];
+        }
+
+        self::assertCount(5, $lines);
+        self::assertCount(5, array_unique($lines));
+    }
+
+    // rig
+
+    private function processor(WorkflowOutboxWriter $outbox, RecordingLog $log): SagaRedriveProcessor
+    {
+        // a decline answers before the read-back, so the connection refuses to be read
+        $connection = $this->createMock(Connection::class);
+        $connection->expects($this->never())->method('transactional');
+
+        return new SagaRedriveProcessor(
+            $outbox,
+            new SagaInspectionGateway($connection, new WorkflowRegistry, new PlainMessageTypeMapper),
+            new OpsAuditLog($log),
+            new OpsActorGate(new OpsAuditLog(new NullLogger), null, allowAnonymous: true),
+        );
     }
 }

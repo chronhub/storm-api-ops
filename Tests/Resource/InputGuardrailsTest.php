@@ -19,7 +19,7 @@ use Symfony\Component\Validator\Validator\ValidatorInterface;
 
 /**
  * The free-text guardrails, `Actor`'s rule transplanted: every reason, message id and workflow
- * type lands in the audit log, a store column or an event, so each is bounded at 256 BYTES and
+ * type lands in the audit log, a store column or an event, so each is bounded at 256 bytes and
  * refuses control and format characters; a newline would forge lines in a plain-text log sink,
  * and an oversized value would be written verbatim into every destination it touches.
  */
@@ -30,7 +30,7 @@ final class InputGuardrailsTest extends TestCase
     public function the_byte_ceiling_holds_exactly_at_256(object $atLimit, object $overLimit): void
     {
         // constructed once with every default applied: a promoted default's line only counts as
-        // covered when the default fires, and the guard ATTRIBUTES live on those lines, so this
+        // covered when the default fires, and the guard attributes live on those lines, so this
         // touch is what maps this very test into the covering set a mutated bound must answer to
         new ($atLimit::class);
 
@@ -42,7 +42,9 @@ final class InputGuardrailsTest extends TestCase
     #[Group('adversarial')]
     public function a_forced_redrive_requires_its_reason_and_an_unforced_one_does_not(): void
     {
-        // @phpstan-ignore new.resultUnused (the default-construction touch maps this test into the covering set of the attribute lines; see the ceiling test)
+        // the default-construction touch maps this test into the covering set of the attribute lines;
+        // see the ceiling test
+        // @phpstan-ignore new.resultUnused (a coverage touch, see above)
         new RedriveSagaInput;
 
         self::assertGreaterThan(0, count(self::validator()->validate(new RedriveSagaInput(messageId: 'm-1', force: true))), 'force owns a risk, the reason is its written half');

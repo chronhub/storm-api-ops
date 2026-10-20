@@ -20,8 +20,8 @@ use Storm\ApiOps\State\SagaHistoryProvider;
 use Storm\Telemetry\History\WorkflowHistoryStore;
 
 /**
- * The narrowing parameters are this provider's whole behaviour, and it had no unit suite: the
- * module's mutation field never generated a mutant for any of it.
+ * The narrowing parameters are this provider's whole behavior, and without this suite the module's
+ * mutation field would never generate a mutant for any of it.
  */
 final class SagaHistoryProviderTest extends TestCase
 {
@@ -41,8 +41,8 @@ final class SagaHistoryProviderTest extends TestCase
     #[Group('adversarial')]
     public function a_generation_that_is_numeric_but_not_integra_l_is_refused(): void
     {
-        // `is_numeric` blesses '1.5', and a cast would serve run 1 to a caller who asked for 1.5
-        // while the envelope carries no generation to contradict it. Integral in FORM, not numeric.
+        // `is_numeric` accepts '1.5', and a cast would serve run 1 to a caller who asked for 1.5
+        // while the envelope carries no generation to contradict it. Integral in form, not numeric.
         $this->expectException(MalformedQueryParameter::class);
         $this->expectExceptionMessageMatches('/generation/');
 
@@ -69,7 +69,7 @@ final class SagaHistoryProviderTest extends TestCase
     #[Group('adversarial')]
     public function a_generation_that_is_not_scalar_is_refused_by_its_type_name(): void
     {
-        // `?generation[]=1` arrives as an array; the message quotes the TYPE rather than casting it
+        // `?generation[]=1` arrives as an array; the message quotes the type rather than casting it
         $this->expectException(MalformedQueryParameter::class);
         $this->expectExceptionMessageMatches('/array/');
 
@@ -98,7 +98,7 @@ final class SagaHistoryProviderTest extends TestCase
     #[Test]
     public function an_absent_generation_reads_every_run_rather_than_refusing(): void
     {
-        // the parameter NARROWS; its absence is a legitimate request and never an error
+        // the parameter narrows; its absence is a legitimate request and never an error
         $document = $this->read([]);
 
         self::assertSame('corr-9', $document->correlationId);
@@ -132,7 +132,7 @@ final class SagaHistoryProviderTest extends TestCase
     public function a_recorded_event_becomes_a_resourc_e_on_the_way_out(): void
     {
         // the mapping is a layer boundary, and the store's record and the served resource carry the
-        // same field names: only the type discriminates, as it has three times on this branch
+        // same field names: only the type discriminates
         $connection = $this->createStub(Connection::class);
         $connection->method('fetchOne')->willReturn(1);
         $connection->method('fetchAllAssociative')->willReturn([[
@@ -143,7 +143,9 @@ final class SagaHistoryProviderTest extends TestCase
 
         $document = $this->provider($connection)->provide(new GetCollection, ['correlationId' => 'corr-9']);
 
-        // @phpstan-ignore staticMethod.alreadyNarrowedType (the declared list type is no runtime guarantee; UnwrapArrayMap survives every value assertion, the store record and the resource carrying the same field names)
+        // UnwrapArrayMap survives every value assertion, the store record and the resource carrying
+        // the same field names
+        // @phpstan-ignore staticMethod.alreadyNarrowedType (the declared list type is no runtime guarantee)
         self::assertContainsOnlyInstancesOf(SagaHistoryRecordResource::class, $document->records);
     }
 
@@ -164,7 +166,7 @@ final class SagaHistoryProviderTest extends TestCase
     #[Group('adversarial')]
     public function a_refusal_quotes_the_valu_e_that_was_sent(): void
     {
-        // naming the parameter is half an answer: an operator retyping a value needs to see WHICH
+        // naming the parameter is half an answer: an operator retyping a value needs to see which
         // value was refused, and a message that omits it makes two different typos read alike
         foreach ([['generation' => '1.5'], ['limit' => '2.5']] as $filters) {
             try {
@@ -188,7 +190,7 @@ final class SagaHistoryProviderTest extends TestCase
     #[Test]
     public function a_named_type_and_a_generation_reach_the_query(): void
     {
-        // the narrowing has to be OBSERVED, not assumed: both parameters exist to change the read,
+        // the narrowing has to be observed, not assumed: both parameters exist to change the read,
         // and a provider that parsed them and dropped them would answer the same rows either way
         $captured = [];
         $connection = $this->createStub(Connection::class);

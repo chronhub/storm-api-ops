@@ -8,9 +8,9 @@ use RuntimeException;
 
 /**
  * The freeze verbs report instead of guessing, the console's own warnings as a 409: a pause finds
- * nothing to freeze when the row is absent, settled, or already paused; a resume finds nothing to
- * lift when nothing was frozen. Conflict rather than not-found on purpose: the correlation may
- * exist and simply not be in the state the verb requires.
+ * nothing to freeze when the row is absent, settled or already paused; a resume finds nothing to lift
+ * when nothing was frozen. A conflict rather than a not-found, because the correlation may exist and
+ * simply not be in the state the verb requires.
  */
 final class SagaPauseRefused extends RuntimeException
 {

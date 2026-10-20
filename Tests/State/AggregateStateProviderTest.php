@@ -38,9 +38,9 @@ use Storm\Contracts\Chronicler\StorageFailure;
 use Storm\Message\MessageEnricher;
 
 /**
- * The aggregate introspection read, which had no unit suite: every mutant of this provider was
- * absent from the module's field rather than surviving in it, a file with no coverage generating
- * none at all.
+ * The aggregate introspection read under its own unit suite: a file with no coverage generates no
+ * mutant at all, so without it every mutant of this provider would be absent from the module's
+ * field rather than surviving in it.
  */
 final class AggregateStateProviderTest extends TestCase
 {
@@ -84,7 +84,7 @@ final class AggregateStateProviderTest extends TestCase
     public function a_plain_aggregate_answers_existence_without_folding_anything(): void
     {
         // a class exposing no state can carry nothing out, so no replay runs: existence and version
-        // come from one indexed head row. An HTTP GET must never fold a history to say `state: null`
+        // come from one indexed head row. An HTTP `GET` must never fold a history to say `state: null`
         $reader = $this->createMock(StreamReader::class);
         $reader->expects($this->never())->method('retrieveAll');
 
@@ -114,7 +114,7 @@ final class AggregateStateProviderTest extends TestCase
             ->provide(new Get, ['category' => 'plain', 'id' => self::ID]);
 
         self::assertStringContainsString('served existence at version 12', $this->outcomes($recorder));
-        // the SUBJECT is what an auditor greps: a line naming the category without its id, or the
+        // the subject is what an auditor greps: a line naming the category without its id, or the
         // id without its category, points at everything or at nothing
         self::assertSame('plain-'.self::ID, $this->subjects($recorder));
     }
@@ -123,7 +123,7 @@ final class AggregateStateProviderTest extends TestCase
     #[Group('adversarial')]
     public function a_history_past_the_ceiling_is_refused_on_the_head_alone(): void
     {
-        // the head bounds the WORST replay and is one indexed row, so the ceiling is decided before
+        // the head bounds the worst replay and is one indexed row, so the ceiling is decided before
         // the fold rather than discovered inside it
         $reader = $this->createMock(StreamReader::class);
         $reader->expects($this->never())->method('retrieveAll');
@@ -156,7 +156,7 @@ final class AggregateStateProviderTest extends TestCase
                 ->provide(new Get, ['category' => 'opsthing', 'id' => self::ID]);
             self::fail('a history past the ceiling must be refused');
         } catch (AggregateFoldRefused $e) {
-            // the refusal travels INTO the line, verbatim: an outcome saying only "refused" leaves
+            // the refusal travels into the line, verbatim: an outcome saying only "refused" leaves
             // an operator to guess between a ceiling and personal data
             self::assertSame('refused: '.$e->getMessage(), $this->outcomes($recorder));
             self::assertSame('opsthing-'.self::ID, $this->subjects($recorder));
@@ -167,7 +167,7 @@ final class AggregateStateProviderTest extends TestCase
     #[Group('adversarial')]
     public function a_stream_carrying_personal_data_is_refused_before_the_replay_it_makes_pointless(): void
     {
-        // a fold renders declared keys DECRYPTED, so this surface would serve the very artifact the
+        // a fold renders declared keys decrypted, so this surface would serve the very artifact the
         // snapshot guard exists to prevent from ever reaching disk
         $reader = $this->createMock(StreamReader::class);
         $reader->expects($this->never())->method('retrieveAll');
@@ -196,7 +196,7 @@ final class AggregateStateProviderTest extends TestCase
                 ->provide(new Get, ['category' => 'opsthing', 'id' => self::ID]);
             self::fail('a driver failure must cross as the contracted type');
         } catch (StorageFailure $e) {
-            // the wrapped message names the STREAM it was probing; a failure that says only
+            // the wrapped message names the stream it was probing; a failure that says only
             // "probe personal data" cannot be tied to the read that raised it
             self::assertStringContainsString('probe personal data on opsthing-'.self::ID, $e->getMessage());
         }
@@ -302,7 +302,7 @@ final class AggregateStateProviderTest extends TestCase
     #[Group('adversarial')]
     public function a_historical_read_of_a_personal_stream_is_refused_before_the_fold(): void
     {
-        // the probe covers the WHOLE stream: a personal event recorded after the target still
+        // the probe covers the whole stream: a personal event recorded after the target still
         // refuses, since the answer's absence of it cannot be proven without folding
         $reader = $this->createMock(StreamReader::class);
         $reader->expects($this->never())->method('retrieveByFilter');
@@ -424,7 +424,7 @@ final class AggregateStateProviderTest extends TestCase
             'App\\PlainThing' => ['id' => OpsAggregateId::class, 'category' => 'plain'],
         ]);
 
-        // ONE head store for both, as a deployment has: a snapshot may neither outrun nor outlive
+        // one head store for both, as a deployment has: a snapshot may neither outrun nor outlive
         // its stream, so a repository reading a different head than the provider would restore from
         // a snapshot the coherence rule exists to reject
         $headStore = $this->heads($heads);
@@ -501,7 +501,7 @@ final class AggregateStateProviderTest extends TestCase
                 return false;
             });
         } elseif ($throws) {
-            // the boundary type is an INTERFACE, so the double is one of its own, the idiom the
+            // the boundary type is an interface, so the double is one of its own, the idiom the
             // chronicler fixtures already use for a driver failure
             $connection->method('fetchOne')->willThrowException(new class('the probe is unreachable') extends RuntimeException implements DbalException {});
         } else {

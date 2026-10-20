@@ -23,19 +23,20 @@ use function is_string;
 /**
  * The backlog families as JSON, read through the metrics exposition rather than around it.
  *
- * Going through it is the point: the exposition bounds each collector with a per-scrape statement
- * timeout and turns a collector that throws into a named error rather than a dead read. A provider
- * walking the collectors itself would have to copy both, and a copy of a bound is free to drift
- * into an ops read that hangs.
+ * The exposition bounds each collector with a per-scrape statement timeout and turns a collector that
+ * throws into a named error rather than a dead read. A provider walking the collectors itself would
+ * have to copy both, and a copy of a bound is free to drift into an ops read that hangs.
  *
  * @implements ProviderInterface<BacklogResource>
  */
 final readonly class BacklogProvider implements ProviderInterface
 {
     /**
-     * The families that answer "what is waiting, and since when". Deliberately a NAMED list and not
-     * a prefix rule: a prefix would silently adopt every future family whose name happens to start
-     * the same way, and this endpoint would drift into the JSON metrics dump it exists not to be.
+     * The families that answer "what is waiting, and since when".
+     *
+     * A named list rather than a prefix rule: a prefix would silently adopt every future family whose
+     * name happens to start the same way, and this endpoint would drift into the JSON metrics dump it
+     * exists not to be.
      */
     public const array FAMILIES = [
         'storm_outbox_events',

@@ -7,7 +7,7 @@ namespace Storm\ApiOps\Tests\Fixture;
 use Psr\EventDispatcher\EventDispatcherInterface;
 
 /**
- * A dispatcher that only remembers: the tests assert WHICH announcements a processor made, and
+ * A dispatcher that only remembers: the tests assert which announcements a processor made, and
  * that a refused verb announced nothing.
  */
 final class CollectingEvents implements EventDispatcherInterface

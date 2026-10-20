@@ -7,10 +7,12 @@ namespace Storm\ApiOps\Resource;
 use Symfony\Component\Validator\Constraints as Assert;
 
 /**
- * The forget action's body: the subject rides the URI, so the body carries only the optional
- * stated why. A GDPR erasure usually has one, the request's ticket or the legal basis, and the ops
- * log is where an auditor expects to find it beside WHO acted. Optional on purpose: unlike a forced
- * redrive, the forget is not overriding any evidence, so no justification is owed.
+ * The forget action's body: the subject rides the URI, so the body carries only the optional stated
+ * why.
+ *
+ * A GDPR erasure usually has one, the request's ticket or the legal basis, and the ops log is where an
+ * auditor expects to find it beside who acted. It stays optional: unlike a forced redrive, the forget
+ * overrides no evidence, so no justification is owed.
  */
 final readonly class ForgetSubjectInput
 {

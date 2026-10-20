@@ -7,20 +7,24 @@ namespace Storm\ApiOps\Error;
 use RuntimeException;
 
 /**
- * The engine declined the cancel, and the message names WHICH cause a fresh read of the instance
- * establishes, since the engine collapses every refusal to one `false`. A 409 for every cause on
- * purpose: the correlation is not a wrong address, the world is in a state where the cancel is not
- * the right move, and that state may change. Four causes:
+ * The engine declined the cancel, and the message names which cause a fresh read of the instance
+ * establishes, since the engine collapses every refusal to one `false`.
  *
- * - No instance carries the correlation, so there is nothing to cancel;
- * - The run has already settled, and a settled saga has nothing left to halt;
- * - The saga still runs and the cancel carried no `force`: an effect-gating wait, where an
- *   in-flight effect is never discarded on a word alone, or a competing step holding it;
- * - The saga still runs and the cancel WAS forced, so only a competing step can have declined:
- *   retry, and never advise force to a caller who already passed it.
+ * A 409 for every cause: the correlation is not a wrong address, the world is in a state where the
+ * cancel is not the right move, and that state may change. Four causes:
  *
- * The read is taken after the refusal, not at the instant the engine judged: the answer describes
- * the instance as the operator's next attempt will find it.
+ * - No instance carries the correlation, so there is nothing to cancel
+ *
+ * - The run has already settled, and a settled saga has nothing left to halt
+ *
+ * - The saga still runs and the cancel carried no `force`: an effect-gating wait, where an in-flight
+ *   effect is never discarded on a word alone, or a competing step holding it
+ *
+ * - The saga still runs and the cancel was forced, so only a competing step can have declined: retry,
+ *   and never advise force to a caller who already passed it
+ *
+ * The read is taken after the refusal, not at the instant the engine judged: the answer describes the
+ * instance as the operator's next attempt will find it.
  */
 final class SagaCancelRefused extends RuntimeException
 {

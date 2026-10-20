@@ -13,9 +13,11 @@ use Storm\Projector\Store\ProjectionCatalog;
 use Storm\Projector\Store\ProjectionRow;
 
 /**
- * One projection row rendered as its ops resource: the stored row enriched with the waiter's
- * measured lag / at-head answers and the lease's SQL-clock live truth. Shared by the read
- * provider and the mutation processor; a mutation answers the same fresh truth a read would.
+ * One projection row rendered as its ops resource: the stored row enriched with the waiter's measured
+ * lag and at-head answers and the lease's SQL-clock live truth.
+ *
+ * Shared by the read provider and the mutation processor; a mutation answers the same fresh truth a
+ * read would.
  */
 final readonly class ProjectionResourceFactory
 {

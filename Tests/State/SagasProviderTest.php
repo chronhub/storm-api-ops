@@ -17,10 +17,11 @@ use Storm\ApiOps\Resource\SagaResource;
 use Storm\ApiOps\State\SagasProvider;
 use Storm\Saga\Build\WorkflowRegistry;
 use Storm\Saga\Store\Inspection\SagaInspectionGateway;
+use Storm\Saga\Testing\InMemory\PlainMessageTypeMapper;
 
 /**
- * The correlation window and its type narrowing, which had no unit suite: the module's mutation
- * field never generated a mutant for this provider.
+ * The correlation window and its type narrowing: without this suite the module's mutation field
+ * would never generate a mutant for this provider.
  */
 final class SagasProviderTest extends TestCase
 {
@@ -40,7 +41,7 @@ final class SagasProviderTest extends TestCase
     #[Group('adversarial')]
     public function the_refusal_names_the_correlation_that_was_asked_for(): void
     {
-        // an operator reading the log must see WHICH read was refused; a generic message would make
+        // an operator reading the log must see which read was refused; a generic message would make
         // two refusals on two correlations indistinguishable
         try {
             $this->provider($this->emptyConnection(), anonymous: false)->provide(new GetCollection, ['correlationId' => 'corr-9']);
@@ -91,17 +92,17 @@ final class SagasProviderTest extends TestCase
     public function every_snapshot_the_gateway_answers_becomes_a_resource(): void
     {
         // the mapping is a layer boundary and it is invisible to a value assertion: the store's
-        // snapshot and the served resource carry the same field names, so only the type discriminates
-        // the WHOLE row the gateway reads, not the half this assertion happens to need: a partial
-        // fixture answers with PHP warnings about the keys it forgot, and those warnings are the
-        // fixture confessing that it is not the shape the store returns
+        // snapshot and the served resource carry the same field names, so only the type discriminates.
+        // The fixture is the whole row the gateway reads, not the half this assertion needs: a partial
+        // fixture answers with PHP warnings about the keys it forgot, which show it is not the shape
+        // the store returns
         $rows = [[
             'workflow_type' => 'transfer', 'state_key' => 'await_legs', 'status' => 'running', 'version' => 3,
             'started_at' => null, 'updated_at' => null, 'global_deadline_consumed_at' => null, 'waived_at' => null, 'generation' => 1,
             'definition_version' => 1, 'retry_total' => 0, 'retries' => null, 'compensations' => null,
             'parent_workflow_type' => null, 'parent_correlation_id' => null, 'root_correlation_id' => null,
             'state_version' => 1, 'vars' => null, 'retimes' => 0,
-            'paused_at' => null, 'type_paused' => false, 'paused_reason' => null,
+            'paused_at' => null, 'type_paused' => false, 'paused_reason' => null, 'parked' => null,
         ]];
 
         // the gateway pays 1+2N reads per correlation: the instances first, then the timers, outbox
@@ -123,14 +124,16 @@ final class SagasProviderTest extends TestCase
 
         $sagas = $this->provider($connection)->provide(new GetCollection, ['correlationId' => 'corr-9']);
 
-        // @phpstan-ignore staticMethod.alreadyNarrowedType (the declared list type is no runtime guarantee; UnwrapArrayMap survives every value assertion here, the snapshot and the resource carrying the same field names)
+        // UnwrapArrayMap survives every value assertion here, the snapshot and the resource carrying
+        // the same field names
+        // @phpstan-ignore staticMethod.alreadyNarrowedType (the declared list type is no runtime guarantee)
         self::assertContainsOnlyInstancesOf(SagaResource::class, $sagas);
     }
 
     #[Test]
     public function a_named_type_reaches_the_query_rather_than_being_parsed_and_dropped(): void
     {
-        // the narrowing OBSERVED: a provider that read the parameter and never passed it on would
+        // the narrowing observed: a provider that read the parameter and never passed it on would
         // answer the same rows for every type, and no assertion on the answer would notice
         $captured = [];
         $connection = $this->createStub(Connection::class);
@@ -155,7 +158,7 @@ final class SagasProviderTest extends TestCase
     private function emptyConnection(): Connection
     {
         $connection = $this->createStub(Connection::class);
-        // a stub must honour the contract it stands in for: `transactional` RUNS its closure, and a
+        // a stub must honor the contract it stands in for: `transactional` runs its closure, and a
         // double that returned null would make the gateway answer null where it never can
         $connection->method('transactional')->willReturnCallback(static fn (callable $work): mixed => $work($connection));
         $connection->method('fetchAllAssociative')->willReturn([]);
@@ -169,7 +172,7 @@ final class SagasProviderTest extends TestCase
         $audit = new OpsAuditLog(new NullLogger);
 
         return new SagasProvider(
-            new SagaInspectionGateway($connection, new WorkflowRegistry),
+            new SagaInspectionGateway($connection, new WorkflowRegistry, new PlainMessageTypeMapper),
             new OpsActorGate($anonymous ? new OpsAuditLog(new NullLogger) : $audit, null, allowAnonymousReads: $anonymous),
         );
     }
